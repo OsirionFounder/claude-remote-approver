@@ -51,7 +51,7 @@ npm install -g claude-remote-approver
 claude-remote-approver setup
 ```
 
-Setup prints a QR code. Scan it with the ntfy app to subscribe, and you are done.
+Setup prints a QR code. Scan it with the ntfy app to subscribe, then **start a new Claude Code session**. The hook is loaded at session startup, so any session that was already running before installation will not have the hook active.
 
 ## Installation
 
