@@ -3,6 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
+ * Returns true if the entry belongs to claude-remote-approver.
+ */
+function isCraEntry(entry) {
+  if (entry.hooks?.some((h) => h.command?.includes("claude-remote-approver"))) return true;
+  if (entry.command?.includes("claude-remote-approver")) return true;
+  return false;
+}
+
+/**
  * Returns the hook command string: `node <absolute_path_to_src/hook.mjs>`
  */
 export function getHookCommand() {
@@ -34,14 +43,6 @@ export function registerHook(settingsPath, hookCommand) {
     settings.hooks.PermissionRequest = [];
   }
 
-  const isCraEntry = (entry) => {
-    // Nested format: { hooks: [{ command: "...claude-remote-approver..." }] }
-    if (entry.hooks?.some((h) => h.command?.includes("claude-remote-approver"))) return true;
-    // Legacy flat format: { command: "...claude-remote-approver..." }
-    if (entry.command?.includes("claude-remote-approver")) return true;
-    return false;
-  };
-
   const existingIndex = settings.hooks.PermissionRequest.findIndex(isCraEntry);
 
   const hookEntry = { hooks: [{ type: "command", command: hookCommand }] };
@@ -69,12 +70,6 @@ export function unregisterHook(settingsPath) {
   }
 
   if (!settings.hooks?.PermissionRequest) return;
-
-  const isCraEntry = (entry) => {
-    if (entry.hooks?.some((h) => h.command?.includes("claude-remote-approver"))) return true;
-    if (entry.command?.includes("claude-remote-approver")) return true;
-    return false;
-  };
 
   const original = settings.hooks.PermissionRequest;
   const filtered = original.filter((entry) => !isCraEntry(entry));
@@ -117,5 +112,5 @@ export async function runSetup({
   const hookCommand = getHookCommand();
   registerHook(settingsPath, hookCommand);
 
-  return { topic, configPath, settingsPath };
+  return { topic, ntfyServer: config.ntfyServer, configPath, settingsPath };
 }

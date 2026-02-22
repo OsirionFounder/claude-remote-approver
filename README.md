@@ -51,7 +51,7 @@ npm install -g claude-remote-approver
 claude-remote-approver setup
 ```
 
-Setup prints a topic name. Subscribe to that topic in the ntfy app, and you are done.
+Setup prints a QR code. Scan it with the ntfy app to subscribe, and you are done.
 
 ## Installation
 
@@ -73,7 +73,7 @@ This command does three things:
 2. **Creates a config file** at `~/.claude-remote-approver.json` with your topic and default settings. The file is created with permission `0600` (owner read/write only).
 3. **Registers the hook** in Claude Code's `~/.claude/settings.json` under `hooks.PermissionRequest`. If a previous hook entry from this tool exists, it is replaced.
 
-After running setup, open the ntfy app on your phone and subscribe to the topic printed in the terminal.
+After running setup, scan the QR code displayed in the terminal with the ntfy app on your phone. You can also manually subscribe using the URL printed below the QR code.
 
 ## Usage
 
@@ -84,6 +84,14 @@ Configure the tool and register the hook with Claude Code.
 ```bash
 claude-remote-approver setup
 # Setup complete. Topic: cra-<hex>
+#
+# Scan this QR code in the ntfy app to subscribe:
+#
+# ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+# █ ▄▄▄▄▄ █ █ ▄▄▄▄▄ █
+# ...
+#
+# Subscribe URL: https://ntfy.sh/cra-<hex>
 ```
 
 ### `test`

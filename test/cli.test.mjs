@@ -19,7 +19,10 @@
 
 import { describe, it, mock, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { main } from "../bin/cli.mjs";
+
+const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,10 +83,13 @@ function createDeps(overrides = {}) {
       async () =>
         overrides.setupResult ?? {
           topic: "cra-generated123",
+          ntfyServer: "https://ntfy.sh",
           configPath: "/home/user/.claude-remote-approver.json",
           settingsPath: "/home/user/.claude/settings.json",
         },
     ),
+    version: overrides.version ?? pkg.version,
+    generateQR: overrides.generateQR ?? mock.fn((text, opts, cb) => cb("")),
     stdout: overrides.stdout ?? createMockWriter(),
     stderr: overrides.stderr ?? createMockWriter(),
     stdin: overrides.stdin ?? "",
@@ -129,6 +135,92 @@ describe("main", () => {
         output.includes("cra-generated123"),
         `stdout should contain the topic, got: ${output}`,
       );
+    });
+
+    it("should call generateQR with ntfy:// URL containing the topic", async () => {
+      const deps = createDeps();
+      await main(["setup"], deps);
+
+      assert.equal(deps.generateQR.mock.callCount(), 1, "generateQR should be called exactly once");
+      const [text] = deps.generateQR.mock.calls[0].arguments;
+      assert.equal(text, "ntfy://ntfy.sh/cra-generated123", `QR text should be ntfy:// URL, got: ${text}`);
+    });
+
+    it("should write QR output from generateQR callback to stdout", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        generateQR: mock.fn((text, opts, cb) => cb("FAKE_QR_OUTPUT")),
+      });
+      await main(["setup"], deps);
+
+      const output = stdout.output();
+      assert.ok(output.includes("FAKE_QR_OUTPUT"), `stdout should contain QR output, got: ${output}`);
+    });
+
+    it("should write https:// subscribe URL to stdout", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({ stdout });
+      await main(["setup"], deps);
+
+      const output = stdout.output();
+      assert.ok(
+        output.includes("https://ntfy.sh/cra-generated123"),
+        `stdout should contain https subscribe URL, got: ${output}`,
+      );
+    });
+
+    it("should use custom ntfyServer host in QR URL when server is not ntfy.sh", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        setupResult: {
+          topic: "cra-custom123",
+          ntfyServer: "https://ntfy.example.com",
+          configPath: "/home/user/.claude-remote-approver.json",
+          settingsPath: "/home/user/.claude/settings.json",
+        },
+      });
+      await main(["setup"], deps);
+
+      assert.equal(deps.generateQR.mock.callCount(), 1);
+      const [text] = deps.generateQR.mock.calls[0].arguments;
+      assert.equal(text, "ntfy://ntfy.example.com/cra-custom123", `QR text should use custom host, got: ${text}`);
+
+      const output = stdout.output();
+      assert.ok(
+        output.includes("https://ntfy.example.com/cra-custom123"),
+        `stdout should contain custom https URL, got: ${output}`,
+      );
+    });
+
+    it("should handle invalid ntfyServer URL gracefully without crashing", async () => {
+      const stdout = createMockWriter();
+      const stderr = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        stderr,
+        setupResult: {
+          topic: "cra-invalidurl123",
+          ntfyServer: "not-a-valid-url",
+          configPath: "/home/user/.claude-remote-approver.json",
+          settingsPath: "/home/user/.claude/settings.json",
+        },
+      });
+
+      // Should not throw
+      await assert.doesNotReject(async () => {
+        await main(["setup"], deps);
+      });
+
+      const errOutput = stderr.output();
+      assert.ok(
+        errOutput.includes("Warning") && errOutput.includes("not-a-valid-url"),
+        `stderr should contain a warning about the invalid URL, got: ${errOutput}`,
+      );
+
+      const output = stdout.output();
+      assert.ok(output.includes("cra-invalidurl123"), `stdout should still contain the topic, got: ${output}`);
     });
   });
 
@@ -652,11 +744,8 @@ describe("main", () => {
 
       await main(["--version"], deps);
 
-      const output = stdout.output();
-      assert.ok(
-        output.includes("0.2.0"),
-        `stdout should contain version, got: ${output}`,
-      );
+      const output = stdout.output().trim();
+      assert.ok(/^\d+\.\d+\.\d+$/.test(output), `should output a semver version, got: ${output}`);
     });
 
     it("should output version to stdout when -v is passed", async () => {
@@ -665,11 +754,23 @@ describe("main", () => {
 
       await main(["-v"], deps);
 
-      const output = stdout.output();
-      assert.ok(
-        output.includes("0.2.0"),
-        `stdout should contain version for -v, got: ${output}`,
-      );
+      const output = stdout.output().trim();
+      assert.ok(/^\d+\.\d+\.\d+$/.test(output), `should output a semver version, got: ${output}`);
+    });
+
+    it("should output version that matches package.json", async () => {
+      const { readFileSync } = await import("node:fs");
+      const { resolve, dirname } = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
+      const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+
+      const stdout = createMockWriter();
+      const deps = createDeps({ stdout });
+      await main(["--version"], deps);
+
+      const output = stdout.output().trim();
+      assert.equal(output, pkg.version, `CLI version should match package.json version, got: ${output}`);
     });
 
     it("should include enable, disable, and uninstall in help text", async () => {

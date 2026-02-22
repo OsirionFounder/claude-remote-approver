@@ -52,7 +52,6 @@ describe("runSetup", () => {
         saveConfigCalledWith = { config, configPath };
       },
       loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, autoApprove: [], autoDeny: [] }),
-      sendNotification: async () => {},
     });
 
     assert.equal(result.topic, generatedTopic);
@@ -72,7 +71,6 @@ describe("runSetup", () => {
         savedPath = configPath;
       },
       loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, autoApprove: [], autoDeny: [] }),
-      sendNotification: async () => {},
     });
 
     assert.ok(savedConfig !== null, "saveConfig should have been called");
@@ -92,7 +90,6 @@ describe("runSetup", () => {
       generateTopic: () => "cra-hookregtest1",
       saveConfig: () => {},
       loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, autoApprove: [], autoDeny: [] }),
-      sendNotification: async () => {},
     });
 
     // settings.json should exist after setup
@@ -129,13 +126,24 @@ describe("runSetup", () => {
       generateTopic: () => generatedTopic,
       saveConfig: () => {},
       loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, autoApprove: [], autoDeny: [] }),
-      sendNotification: async () => {},
     });
 
     assert.equal(typeof result, "object");
     assert.equal(result.topic, generatedTopic);
     assert.equal(result.configPath, tmpConfigPath);
     assert.equal(result.settingsPath, tmpSettingsPath);
+  });
+
+  it("should return ntfyServer from the loaded config", async () => {
+    const result = await runSetup({
+      configPath: tmpConfigPath,
+      settingsPath: tmpSettingsPath,
+      generateTopic: () => "cra-ntfyservertest",
+      saveConfig: () => {},
+      loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.example.com", timeout: 120, autoApprove: [], autoDeny: [] }),
+    });
+
+    assert.equal(result.ntfyServer, "https://ntfy.example.com");
   });
 });
 

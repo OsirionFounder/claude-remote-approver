@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import qrcode from "qrcode-terminal";
 
 // ---------------------------------------------------------------------------
 // main
@@ -22,7 +23,7 @@ export async function main(args, deps) {
     return;
   }
   if (args.includes("--version") || args.includes("-v")) {
-    deps.stdout.write("0.2.0\n");
+    deps.stdout.write(`${deps.version}\n`);
     return;
   }
 
@@ -31,7 +32,23 @@ export async function main(args, deps) {
   switch (command) {
     case "setup": {
       const result = await deps.runSetup(deps);
-      deps.stdout.write(`Setup complete. Topic: ${result.topic}\n`);
+      deps.stdout.write(`Setup complete. Topic: ${result.topic}\n\n`);
+
+      try {
+        const host = new URL(result.ntfyServer).host;
+        const ntfyUrl = `ntfy://${host}/${result.topic}`;
+        const httpsUrl = `${result.ntfyServer.replace(/\/+$/, "")}/${result.topic}`;
+
+        deps.stdout.write("Scan this QR code in the ntfy app to subscribe:\n\n");
+        // qrcode-terminal invokes the callback synchronously
+        deps.generateQR(ntfyUrl, { small: true }, (qrString) => {
+          deps.stdout.write(qrString + "\n\n");
+          deps.stdout.write(`Subscribe URL: ${httpsUrl}\n`);
+        });
+      } catch {
+        deps.stderr.write(`Warning: Invalid ntfyServer URL in config: ${result.ntfyServer}\n`);
+        deps.stdout.write(`Subscribe to topic "${result.topic}" in the ntfy app.\n`);
+      }
       break;
     }
 
@@ -161,6 +178,8 @@ const isMain =
   })();
 
 if (isMain) {
+  const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+
   const { loadConfig, saveConfig, generateTopic } = await import(
     "../src/config.mjs"
   );
@@ -193,6 +212,8 @@ if (isMain) {
     registerHook,
     getHookCommand,
     unregisterHook,
+    version: pkg.version,
+    generateQR: (text, opts, cb) => qrcode.generate(text, opts, cb),
     unlinkSync: fs.unlinkSync,
     configPath: (await import("../src/config.mjs")).CONFIG_PATH,
     settingsPath: path.join(os.homedir(), ".claude", "settings.json"),
