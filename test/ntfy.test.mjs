@@ -3,7 +3,7 @@
  *
  * Coverage:
  * - sendNotification: URL construction, HTTP method, headers, body, actions
- * - waitForResponse: SSE streaming, requestId filtering, timeout handling
+ * - waitForResponse: polling-based response retrieval, requestId filtering, timeout handling
  * - formatToolInfo: formatting for Bash, Read, and Write tools
  *
  * TDD Red phase — all tests must FAIL because the implementation does not exist yet.
@@ -29,41 +29,6 @@ function createMockFetch(responseBody = {}, status = 200) {
       status,
       json: async () => responseBody,
       text: async () => JSON.stringify(responseBody),
-    };
-  });
-  fn.calls = calls;
-  return fn;
-}
-
-/**
- * Creates a ReadableStream that emits newline-delimited JSON lines (SSE-style)
- * after a short delay, then closes.
- */
-function createSSEStream(events) {
-  return new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      for (const event of events) {
-        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
-        // Small delay to simulate network
-        await new Promise((r) => setTimeout(r, 10));
-      }
-      controller.close();
-    },
-  });
-}
-
-/**
- * Creates a mock fetch that returns a streaming response (for SSE subscriptions).
- */
-function createStreamingMockFetch(events) {
-  const calls = [];
-  const fn = mock.fn(async (url, options) => {
-    calls.push({ url, options });
-    return {
-      ok: true,
-      status: 200,
-      body: createSSEStream(events),
     };
   });
   fn.calls = calls;
@@ -295,14 +260,14 @@ describe("waitForResponse", () => {
     assert.equal(typeof waitForResponse, "function");
   });
 
-  it("should subscribe to the response topic via GET", async () => {
-    const events = [
-      {
-        event: "message",
-        message: JSON.stringify({ requestId: "req-100", approved: true }),
-      },
-    ];
-    const mockFetch = createStreamingMockFetch(events);
+  it("should poll the response topic with poll=1 and since parameter", async () => {
+    const responseText =
+      '{"event":"message","message":"{\\"requestId\\":\\"req-100\\",\\"approved\\":true}"}\n';
+    const mockFetch = mock.fn(async (url, options) => ({
+      ok: true,
+      status: 200,
+      text: async () => responseText,
+    }));
     globalThis.fetch = mockFetch;
 
     await waitForResponse({
@@ -310,92 +275,90 @@ describe("waitForResponse", () => {
       topic: "my-topic",
       requestId: "req-100",
       timeout: 5000,
+      pollInterval: 10,
     });
 
-    assert.equal(mockFetch.calls.length, 1);
-    const url = mockFetch.calls[0].url;
+    assert.ok(mockFetch.mock.callCount() >= 1, "fetch should be called at least once");
+    const url = mockFetch.mock.calls[0].arguments[0];
     assert.ok(
-      url.includes("my-topic-response"),
-      `URL should include response topic, got: ${url}`
+      url.includes("poll=1"),
+      `URL should include poll=1, got: ${url}`
+    );
+    assert.ok(
+      /since=\d+/.test(url),
+      `URL should include since= followed by a numeric Unix timestamp, got: ${url}`
     );
   });
 
-  it("should return { approved: true } when a matching requestId with approved:true is received", async () => {
-    const events = [
-      {
-        event: "message",
-        message: JSON.stringify({ requestId: "req-200", approved: true }),
-      },
-    ];
-    const mockFetch = createStreamingMockFetch(events);
-    globalThis.fetch = mockFetch;
+  it("should return { approved: true } when matching requestId with approved:true", async () => {
+    const responseText =
+      '{"event":"message","message":"{\\"requestId\\":\\"req-200\\",\\"approved\\":true}"}\n';
+    globalThis.fetch = mock.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => responseText,
+    }));
 
     const result = await waitForResponse({
       server: "https://ntfy.sh",
       topic: "my-topic",
       requestId: "req-200",
       timeout: 5000,
+      pollInterval: 10,
     });
 
     assert.deepEqual(result, { approved: true });
   });
 
-  it("should return { approved: false } when a matching requestId with approved:false is received", async () => {
-    const events = [
-      {
-        event: "message",
-        message: JSON.stringify({ requestId: "req-201", approved: false }),
-      },
-    ];
-    const mockFetch = createStreamingMockFetch(events);
-    globalThis.fetch = mockFetch;
+  it("should return { approved: false } when matching requestId with approved:false", async () => {
+    const responseText =
+      '{"event":"message","message":"{\\"requestId\\":\\"req-201\\",\\"approved\\":false}"}\n';
+    globalThis.fetch = mock.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => responseText,
+    }));
 
     const result = await waitForResponse({
       server: "https://ntfy.sh",
       topic: "my-topic",
       requestId: "req-201",
       timeout: 5000,
+      pollInterval: 10,
     });
 
     assert.deepEqual(result, { approved: false });
   });
 
-  it("should filter messages by requestId and ignore non-matching ones", async () => {
-    const events = [
-      {
-        event: "message",
-        message: JSON.stringify({ requestId: "other-id", approved: true }),
-      },
-      {
-        event: "message",
-        message: JSON.stringify({ requestId: "req-300", approved: false }),
-      },
-    ];
-    const mockFetch = createStreamingMockFetch(events);
-    globalThis.fetch = mockFetch;
+  it("should filter by requestId and ignore non-matching messages", async () => {
+    const responseText = [
+      '{"event":"message","message":"{\\"requestId\\":\\"other-id\\",\\"approved\\":true}"}',
+      '{"event":"message","message":"{\\"requestId\\":\\"req-300\\",\\"approved\\":false}"}',
+    ].join("\n") + "\n";
+    globalThis.fetch = mock.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => responseText,
+    }));
 
     const result = await waitForResponse({
       server: "https://ntfy.sh",
       topic: "my-topic",
       requestId: "req-300",
       timeout: 5000,
+      pollInterval: 10,
     });
 
-    // Should skip the first event (wrong requestId) and return the second
+    // Should skip the first message (wrong requestId) and return the second
     assert.deepEqual(result, { approved: false });
   });
 
   it("should return { approved: false } on timeout", async () => {
-    // Stream that never sends a matching event — just stays open
-    const neverMatchStream = new ReadableStream({
-      start() {
-        // Never enqueue anything, never close — simulates waiting forever
-      },
-    });
+    // Mock fetch always returns empty text (no messages)
     const mockFetch = mock.fn(async () => ({
       ok: true,
       status: 200,
-      body: neverMatchStream,
+      text: async () => "",
     }));
     globalThis.fetch = mockFetch;
 
@@ -404,19 +367,25 @@ describe("waitForResponse", () => {
       topic: "my-topic",
       requestId: "req-timeout",
       timeout: 200, // Very short timeout for fast test
+      pollInterval: 10,
     });
 
     assert.deepEqual(result, { approved: false });
+    // With a 200ms timeout and 10ms polling interval, fetch should be called at least once
+    assert.ok(
+      mockFetch.mock.callCount() >= 1,
+      `fetch should be called at least once, was called ${mockFetch.mock.callCount()} times`
+    );
   });
 
   it("should connect to {server}/{topic}-response/json endpoint", async () => {
-    const events = [
-      {
-        event: "message",
-        message: JSON.stringify({ requestId: "req-400", approved: true }),
-      },
-    ];
-    const mockFetch = createStreamingMockFetch(events);
+    const responseText =
+      '{"event":"message","message":"{\\"requestId\\":\\"req-400\\",\\"approved\\":true}"}\n';
+    const mockFetch = mock.fn(async (url) => ({
+      ok: true,
+      status: 200,
+      text: async () => responseText,
+    }));
     globalThis.fetch = mockFetch;
 
     await waitForResponse({
@@ -424,14 +393,115 @@ describe("waitForResponse", () => {
       topic: "my-topic",
       requestId: "req-400",
       timeout: 5000,
+      pollInterval: 10,
     });
 
-    const url = mockFetch.calls[0].url;
-    assert.equal(
-      url,
-      "https://ntfy.sh/my-topic-response/json",
-      `Expected SSE endpoint URL, got: ${url}`
+    const url = mockFetch.mock.calls[0].arguments[0];
+    assert.ok(
+      url.startsWith("https://ntfy.sh/my-topic-response/json"),
+      `Expected polling endpoint URL to start with https://ntfy.sh/my-topic-response/json, got: ${url}`
     );
+  });
+
+  it("should poll multiple times if first poll has no match", async () => {
+    let callCount = 0;
+    const matchingText =
+      '{"event":"message","message":"{\\"requestId\\":\\"req-500\\",\\"approved\\":true}"}\n';
+    const mockFetch = mock.fn(async () => {
+      callCount++;
+      return {
+        ok: true,
+        status: 200,
+        text: async () => (callCount <= 1 ? "" : matchingText),
+      };
+    });
+    globalThis.fetch = mockFetch;
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-500",
+      timeout: 10000,
+      pollInterval: 10,
+    });
+
+    assert.deepEqual(result, { approved: true });
+    assert.ok(
+      mockFetch.mock.callCount() >= 2,
+      `fetch should be called at least twice, was called ${mockFetch.mock.callCount()} times`
+    );
+  });
+
+  it("should handle fetch network errors gracefully", async () => {
+    let callCount = 0;
+    globalThis.fetch = mock.fn(async (url) => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error("Network error");
+      }
+      // Second call returns a match
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ event: "message", message: JSON.stringify({ requestId: "req-net", approved: true }) }),
+      };
+    });
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-net",
+      timeout: 5000,
+      pollInterval: 10,
+    });
+
+    assert.deepEqual(result, { approved: true });
+    assert.ok(callCount >= 2, "should have retried after network error");
+  });
+
+  it("should return { approved: true } only for boolean true, not truthy values", async () => {
+    globalThis.fetch = mock.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ event: "message", message: JSON.stringify({ requestId: "req-truthy", approved: "yes" }) }),
+    }));
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-truthy",
+      timeout: 5000,
+      pollInterval: 10,
+    });
+
+    // "yes" is truthy but not boolean true — should be treated as false
+    assert.deepEqual(result, { approved: false });
+  });
+
+  it("should skip non-ok HTTP responses and continue polling", async () => {
+    let callCount = 0;
+    globalThis.fetch = mock.fn(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return { ok: false, status: 429, text: async () => "Rate limited" };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ event: "message", message: JSON.stringify({ requestId: "req-retry", approved: true }) }),
+      };
+    });
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-retry",
+      timeout: 5000,
+      pollInterval: 10,
+    });
+
+    assert.deepEqual(result, { approved: true });
+    assert.ok(callCount >= 2, "should have polled again after HTTP error");
   });
 });
 
