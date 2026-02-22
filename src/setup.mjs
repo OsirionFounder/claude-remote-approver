@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Returns the hook command string: `node <absolute_path_to_src/hook.mjs>`
  */
 export function getHookCommand() {
-  const hookPath = path.resolve(import.meta.dirname, "hook.mjs");
+  const hookPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "hook.mjs");
   return `node "${hookPath}"`;
 }
 
