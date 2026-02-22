@@ -1,0 +1,371 @@
+/**
+ * Test module for src/setup.mjs
+ *
+ * Coverage:
+ * - runSetup: generates topic, saves config, registers hook, returns result
+ * - registerHook: creates settings.json, preserves existing settings/hooks,
+ *   sets correct PermissionRequest hook structure
+ * - getHookCommand: returns valid command string containing hook.mjs
+ *
+ * TDD Red phase — all tests must FAIL because the implementation does not exist yet.
+ */
+
+import { describe, it, before, after } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { runSetup, registerHook, getHookCommand } from "../src/setup.mjs";
+
+// ===========================================================================
+// runSetup
+// ===========================================================================
+
+describe("runSetup", () => {
+  let tmpDir;
+  let tmpConfigPath;
+  let tmpSettingsPath;
+
+  before(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cra-setup-test-"));
+    tmpConfigPath = path.join(tmpDir, ".claude-remote-approver.json");
+    tmpSettingsPath = path.join(tmpDir, "settings.json");
+  });
+
+  after(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("should be a function", () => {
+    assert.equal(typeof runSetup, "function");
+  });
+
+  it("should generate a topic via the injected generateTopic", async () => {
+    const generatedTopic = "cra-test1234abcd";
+    let saveConfigCalledWith = null;
+
+    const result = await runSetup({
+      configPath: tmpConfigPath,
+      settingsPath: tmpSettingsPath,
+      generateTopic: () => generatedTopic,
+      saveConfig: (config, configPath) => {
+        saveConfigCalledWith = { config, configPath };
+      },
+      loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, autoApprove: [], autoDeny: [] }),
+      sendNotification: async () => {},
+    });
+
+    assert.equal(result.topic, generatedTopic);
+  });
+
+  it("should save config with the new topic via the injected saveConfig", async () => {
+    const generatedTopic = "cra-savetest1234";
+    let savedConfig = null;
+    let savedPath = null;
+
+    await runSetup({
+      configPath: tmpConfigPath,
+      settingsPath: tmpSettingsPath,
+      generateTopic: () => generatedTopic,
+      saveConfig: (config, configPath) => {
+        savedConfig = config;
+        savedPath = configPath;
+      },
+      loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, autoApprove: [], autoDeny: [] }),
+      sendNotification: async () => {},
+    });
+
+    assert.ok(savedConfig !== null, "saveConfig should have been called");
+    assert.equal(savedConfig.topic, generatedTopic);
+    assert.equal(savedPath, tmpConfigPath);
+  });
+
+  it("should register the hook in settings.json at settingsPath", async () => {
+    // Clean up settings file before test
+    if (fs.existsSync(tmpSettingsPath)) {
+      fs.unlinkSync(tmpSettingsPath);
+    }
+
+    await runSetup({
+      configPath: tmpConfigPath,
+      settingsPath: tmpSettingsPath,
+      generateTopic: () => "cra-hookregtest1",
+      saveConfig: () => {},
+      loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, autoApprove: [], autoDeny: [] }),
+      sendNotification: async () => {},
+    });
+
+    // settings.json should exist after setup
+    assert.ok(fs.existsSync(tmpSettingsPath), "settings.json should have been created");
+
+    const settings = JSON.parse(fs.readFileSync(tmpSettingsPath, "utf-8"));
+    assert.ok(settings.hooks, "settings should have a hooks property");
+    assert.ok(
+      settings.hooks.PermissionRequest,
+      "hooks should have a PermissionRequest property"
+    );
+    assert.ok(
+      Array.isArray(settings.hooks.PermissionRequest),
+      "PermissionRequest should be an array"
+    );
+    assert.equal(settings.hooks.PermissionRequest.length, 1);
+    assert.equal(settings.hooks.PermissionRequest[0].type, "command");
+    assert.ok(
+      settings.hooks.PermissionRequest[0].command.includes("hook.mjs"),
+      `hook command should include "hook.mjs", got: "${settings.hooks.PermissionRequest[0].command}"`
+    );
+  });
+
+  it("should return an object with topic, configPath, and settingsPath", async () => {
+    const generatedTopic = "cra-returntest12";
+
+    const result = await runSetup({
+      configPath: tmpConfigPath,
+      settingsPath: tmpSettingsPath,
+      generateTopic: () => generatedTopic,
+      saveConfig: () => {},
+      loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, autoApprove: [], autoDeny: [] }),
+      sendNotification: async () => {},
+    });
+
+    assert.equal(typeof result, "object");
+    assert.equal(result.topic, generatedTopic);
+    assert.equal(result.configPath, tmpConfigPath);
+    assert.equal(result.settingsPath, tmpSettingsPath);
+  });
+});
+
+// ===========================================================================
+// registerHook
+// ===========================================================================
+
+describe("registerHook", () => {
+  let tmpDir;
+
+  before(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cra-hook-test-"));
+  });
+
+  after(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("should be a function", () => {
+    assert.equal(typeof registerHook, "function");
+  });
+
+  it("should create settings.json if it does not exist", () => {
+    const settingsPath = path.join(tmpDir, "create-test-settings.json");
+
+    registerHook(settingsPath, "node /path/to/hook.mjs");
+
+    assert.ok(
+      fs.existsSync(settingsPath),
+      "settings.json should have been created"
+    );
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.ok(settings.hooks, "should have hooks property");
+    assert.ok(
+      Array.isArray(settings.hooks.PermissionRequest),
+      "should have PermissionRequest array"
+    );
+  });
+
+  it("should preserve existing settings when adding hook", () => {
+    const settingsPath = path.join(tmpDir, "preserve-settings.json");
+    const existingSettings = {
+      autoUpdaterStatus: "disabled",
+      permissions: { allow: ["Read"] },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
+
+    registerHook(settingsPath, "node /path/to/hook.mjs");
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(
+      settings.autoUpdaterStatus,
+      "disabled",
+      "should preserve autoUpdaterStatus"
+    );
+    assert.deepEqual(
+      settings.permissions,
+      { allow: ["Read"] },
+      "should preserve permissions"
+    );
+    assert.ok(settings.hooks, "should have added hooks");
+  });
+
+  it("should preserve other hooks (e.g., PreToolUse) when setting PermissionRequest", () => {
+    const settingsPath = path.join(tmpDir, "preserve-hooks.json");
+    const existingSettings = {
+      hooks: {
+        PreToolUse: [
+          { type: "command", command: "echo pre-tool" },
+        ],
+        PostToolUse: [
+          { type: "command", command: "echo post-tool" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
+
+    registerHook(settingsPath, "node /path/to/hook.mjs");
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.deepEqual(
+      settings.hooks.PreToolUse,
+      [{ type: "command", command: "echo pre-tool" }],
+      "should preserve PreToolUse hooks"
+    );
+    assert.deepEqual(
+      settings.hooks.PostToolUse,
+      [{ type: "command", command: "echo post-tool" }],
+      "should preserve PostToolUse hooks"
+    );
+    assert.ok(
+      settings.hooks.PermissionRequest,
+      "should have added PermissionRequest hook"
+    );
+  });
+
+  it("should set PermissionRequest to the correct hook structure", () => {
+    const settingsPath = path.join(tmpDir, "structure-test.json");
+    const hookCommand = "node /usr/local/lib/node_modules/claude-remote-approver/src/hook.mjs";
+
+    registerHook(settingsPath, hookCommand);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    const permHook = settings.hooks.PermissionRequest;
+
+    assert.ok(Array.isArray(permHook), "PermissionRequest should be an array");
+    assert.equal(permHook.length, 1, "should have exactly one hook entry");
+    assert.deepEqual(permHook[0], {
+      type: "command",
+      command: hookCommand,
+    });
+  });
+
+  it("should update existing claude-remote-approver hook in place", () => {
+    const settingsPath = path.join(tmpDir, "overwrite-test.json");
+    const existingSettings = {
+      hooks: {
+        PermissionRequest: [
+          { type: "command", command: "echo other-hook" },
+          { type: "command", command: "node /old/path/claude-remote-approver/src/hook.mjs" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
+
+    const newCommand = "node /new/path/claude-remote-approver/src/hook.mjs";
+    registerHook(settingsPath, newCommand);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(settings.hooks.PermissionRequest.length, 2, "should still have 2 entries");
+    assert.equal(
+      settings.hooks.PermissionRequest[0].command,
+      "echo other-hook",
+      "non-claude-remote-approver entry should be preserved"
+    );
+    assert.equal(
+      settings.hooks.PermissionRequest[1].command,
+      newCommand,
+      "claude-remote-approver entry should be updated in place"
+    );
+  });
+
+  it("should preserve existing non-claude-remote-approver PermissionRequest hooks", () => {
+    const settingsPath = path.join(tmpDir, "preserve-perm-hooks.json");
+    const existingSettings = {
+      hooks: {
+        PermissionRequest: [
+          { type: "command", command: "echo first-hook" },
+          { type: "command", command: "echo second-hook" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
+
+    const newCommand = "node /path/to/claude-remote-approver/src/hook.mjs";
+    registerHook(settingsPath, newCommand);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(settings.hooks.PermissionRequest.length, 3, "should have 3 entries (2 existing + 1 new)");
+    assert.equal(
+      settings.hooks.PermissionRequest[0].command,
+      "echo first-hook",
+      "first existing hook should be preserved"
+    );
+    assert.equal(
+      settings.hooks.PermissionRequest[1].command,
+      "echo second-hook",
+      "second existing hook should be preserved"
+    );
+    assert.equal(
+      settings.hooks.PermissionRequest[2].command,
+      newCommand,
+      "new claude-remote-approver hook should be appended"
+    );
+  });
+});
+
+// ===========================================================================
+// getHookCommand
+// ===========================================================================
+
+describe("getHookCommand", () => {
+  it("should be a function", () => {
+    assert.equal(typeof getHookCommand, "function");
+  });
+
+  it("should return a string", () => {
+    const cmd = getHookCommand();
+    assert.equal(typeof cmd, "string");
+  });
+
+  it("should start with 'node '", () => {
+    const cmd = getHookCommand();
+    assert.ok(
+      cmd.startsWith("node "),
+      `Command should start with "node ", got: "${cmd}"`
+    );
+  });
+
+  it("should contain hook.mjs in the path", () => {
+    const cmd = getHookCommand();
+    assert.ok(
+      cmd.includes("hook.mjs"),
+      `Command should include "hook.mjs", got: "${cmd}"`
+    );
+  });
+
+  it("should wrap the path in double quotes", () => {
+    const cmd = getHookCommand();
+    // After "node ", the path should be wrapped in double quotes
+    const afterNode = cmd.slice("node ".length);
+    assert.ok(
+      afterNode.startsWith('"') && afterNode.endsWith('"'),
+      `Path should be wrapped in double quotes, got: "${afterNode}"`
+    );
+  });
+
+  it("should contain an absolute path (starts with /)", () => {
+    const cmd = getHookCommand();
+    // Extract the path part after "node " and strip surrounding quotes
+    const hookPath = cmd.replace(/^node\s+/, "").replace(/^"|"$/g, "");
+    assert.ok(
+      path.isAbsolute(hookPath),
+      `Hook path should be absolute, got: "${hookPath}"`
+    );
+  });
+
+  it("should point to src/hook.mjs relative to the package root", () => {
+    const cmd = getHookCommand();
+    const hookPath = cmd.replace(/^node\s+/, "").replace(/^"|"$/g, "");
+    assert.ok(
+      hookPath.endsWith(path.join("src", "hook.mjs")),
+      `Hook path should end with "src/hook.mjs", got: "${hookPath}"`
+    );
+  });
+});
