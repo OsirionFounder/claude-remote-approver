@@ -31,7 +31,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/eguchiyuuichi/claude-remote-approver.git"
+    "url": "git+https://github.com/yuuichieguchi/claude-remote-approver.git"
   },
   "dependencies": {
     "qrcode-terminal": "0.12.0"
