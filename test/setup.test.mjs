@@ -109,10 +109,14 @@ describe("runSetup", () => {
       "PermissionRequest should be an array"
     );
     assert.equal(settings.hooks.PermissionRequest.length, 1);
-    assert.equal(settings.hooks.PermissionRequest[0].type, "command");
     assert.ok(
-      settings.hooks.PermissionRequest[0].command.includes("hook.mjs"),
-      `hook command should include "hook.mjs", got: "${settings.hooks.PermissionRequest[0].command}"`
+      Array.isArray(settings.hooks.PermissionRequest[0].hooks),
+      "entry should have a hooks array"
+    );
+    assert.equal(settings.hooks.PermissionRequest[0].hooks[0].type, "command");
+    assert.ok(
+      settings.hooks.PermissionRequest[0].hooks[0].command.includes("hook.mjs"),
+      `hook command should include "hook.mjs", got: "${settings.hooks.PermissionRequest[0].hooks[0].command}"`
     );
   });
 
@@ -241,8 +245,7 @@ describe("registerHook", () => {
     assert.ok(Array.isArray(permHook), "PermissionRequest should be an array");
     assert.equal(permHook.length, 1, "should have exactly one hook entry");
     assert.deepEqual(permHook[0], {
-      type: "command",
-      command: hookCommand,
+      hooks: [{ type: "command", command: hookCommand }],
     });
   });
 
@@ -251,8 +254,8 @@ describe("registerHook", () => {
     const existingSettings = {
       hooks: {
         PermissionRequest: [
-          { type: "command", command: "echo other-hook" },
-          { type: "command", command: "node /old/path/claude-remote-approver/src/hook.mjs" },
+          { hooks: [{ type: "command", command: "echo other-hook" }] },
+          { hooks: [{ type: "command", command: "node /old/path/claude-remote-approver/src/hook.mjs" }] },
         ],
       },
     };
@@ -263,14 +266,14 @@ describe("registerHook", () => {
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     assert.equal(settings.hooks.PermissionRequest.length, 2, "should still have 2 entries");
-    assert.equal(
-      settings.hooks.PermissionRequest[0].command,
+    assert.deepEqual(
+      settings.hooks.PermissionRequest[0].hooks[0].command,
       "echo other-hook",
       "non-claude-remote-approver entry should be preserved"
     );
-    assert.equal(
-      settings.hooks.PermissionRequest[1].command,
-      newCommand,
+    assert.deepEqual(
+      settings.hooks.PermissionRequest[1],
+      { hooks: [{ type: "command", command: newCommand }] },
       "claude-remote-approver entry should be updated in place"
     );
   });
@@ -280,8 +283,8 @@ describe("registerHook", () => {
     const existingSettings = {
       hooks: {
         PermissionRequest: [
-          { type: "command", command: "echo first-hook" },
-          { type: "command", command: "echo second-hook" },
+          { hooks: [{ type: "command", command: "echo first-hook" }] },
+          { hooks: [{ type: "command", command: "echo second-hook" }] },
         ],
       },
     };
@@ -293,19 +296,42 @@ describe("registerHook", () => {
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     assert.equal(settings.hooks.PermissionRequest.length, 3, "should have 3 entries (2 existing + 1 new)");
     assert.equal(
-      settings.hooks.PermissionRequest[0].command,
+      settings.hooks.PermissionRequest[0].hooks[0].command,
       "echo first-hook",
       "first existing hook should be preserved"
     );
     assert.equal(
-      settings.hooks.PermissionRequest[1].command,
+      settings.hooks.PermissionRequest[1].hooks[0].command,
       "echo second-hook",
       "second existing hook should be preserved"
     );
-    assert.equal(
-      settings.hooks.PermissionRequest[2].command,
-      newCommand,
+    assert.deepEqual(
+      settings.hooks.PermissionRequest[2],
+      { hooks: [{ type: "command", command: newCommand }] },
       "new claude-remote-approver hook should be appended"
+    );
+  });
+
+  it("should upgrade legacy flat format to nested format", () => {
+    const settingsPath = path.join(tmpDir, "upgrade-flat-test.json");
+    const existingSettings = {
+      hooks: {
+        PermissionRequest: [
+          { type: "command", command: "node /old/claude-remote-approver/src/hook.mjs" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2));
+
+    const newCommand = "node /new/claude-remote-approver/src/hook.mjs";
+    registerHook(settingsPath, newCommand);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(settings.hooks.PermissionRequest.length, 1, "should still have 1 entry");
+    assert.deepEqual(
+      settings.hooks.PermissionRequest[0],
+      { hooks: [{ type: "command", command: newCommand }] },
+      "legacy flat entry should be upgraded to nested format"
     );
   });
 });
@@ -444,8 +470,8 @@ describe("unregisterHook", () => {
     const original = {
       hooks: {
         PermissionRequest: [
-          { type: "command", command: "echo other-hook" },
-          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+          { hooks: [{ type: "command", command: "echo other-hook" }] },
+          { hooks: [{ type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" }] },
         ],
       },
     };
@@ -460,7 +486,7 @@ describe("unregisterHook", () => {
       "should have only 1 entry remaining"
     );
     assert.equal(
-      settings.hooks.PermissionRequest[0].command,
+      settings.hooks.PermissionRequest[0].hooks[0].command,
       "echo other-hook",
       "non-claude-remote-approver entry should remain"
     );
@@ -472,8 +498,8 @@ describe("unregisterHook", () => {
       hooks: {
         PreToolUse: [{ type: "command", command: "echo pre-tool" }],
         PermissionRequest: [
-          { type: "command", command: "echo other-hook" },
-          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+          { hooks: [{ type: "command", command: "echo other-hook" }] },
+          { hooks: [{ type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" }] },
         ],
       },
     };
@@ -492,6 +518,11 @@ describe("unregisterHook", () => {
       1,
       "should have only non-claude-remote-approver entry in PermissionRequest"
     );
+    assert.equal(
+      settings.hooks.PermissionRequest[0].hooks[0].command,
+      "echo other-hook",
+      "non-claude-remote-approver entry should remain"
+    );
   });
 
   it("should delete PermissionRequest key when array becomes empty", () => {
@@ -500,7 +531,7 @@ describe("unregisterHook", () => {
       hooks: {
         PreToolUse: [{ type: "command", command: "echo pre-tool" }],
         PermissionRequest: [
-          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+          { hooks: [{ type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" }] },
         ],
       },
     };
@@ -527,7 +558,7 @@ describe("unregisterHook", () => {
       autoUpdaterStatus: "disabled",
       hooks: {
         PermissionRequest: [
-          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+          { hooks: [{ type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" }] },
         ],
       },
     };
@@ -546,5 +577,22 @@ describe("unregisterHook", () => {
       "disabled",
       "other top-level settings should remain"
     );
+  });
+
+  it("should remove legacy flat format entries", () => {
+    const settingsPath = path.join(tmpDir, "remove-legacy-flat-settings.json");
+    const original = {
+      hooks: {
+        PermissionRequest: [
+          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(original, null, 2));
+
+    unregisterHook(settingsPath);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(settings.hooks, undefined, "hooks key should be removed after clearing legacy flat entry");
   });
 });

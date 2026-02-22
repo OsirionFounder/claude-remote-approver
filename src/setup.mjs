@@ -34,11 +34,17 @@ export function registerHook(settingsPath, hookCommand) {
     settings.hooks.PermissionRequest = [];
   }
 
-  const existingIndex = settings.hooks.PermissionRequest.findIndex(
-    (h) => h.command && h.command.includes("claude-remote-approver")
-  );
+  const isCraEntry = (entry) => {
+    // Nested format: { hooks: [{ command: "...claude-remote-approver..." }] }
+    if (entry.hooks?.some((h) => h.command?.includes("claude-remote-approver"))) return true;
+    // Legacy flat format: { command: "...claude-remote-approver..." }
+    if (entry.command?.includes("claude-remote-approver")) return true;
+    return false;
+  };
 
-  const hookEntry = { type: "command", command: hookCommand };
+  const existingIndex = settings.hooks.PermissionRequest.findIndex(isCraEntry);
+
+  const hookEntry = { hooks: [{ type: "command", command: hookCommand }] };
 
   if (existingIndex >= 0) {
     settings.hooks.PermissionRequest[existingIndex] = hookEntry;
@@ -64,10 +70,14 @@ export function unregisterHook(settingsPath) {
 
   if (!settings.hooks?.PermissionRequest) return;
 
+  const isCraEntry = (entry) => {
+    if (entry.hooks?.some((h) => h.command?.includes("claude-remote-approver"))) return true;
+    if (entry.command?.includes("claude-remote-approver")) return true;
+    return false;
+  };
+
   const original = settings.hooks.PermissionRequest;
-  const filtered = original.filter(
-    (h) => !(h.command && h.command.includes("claude-remote-approver"))
-  );
+  const filtered = original.filter((entry) => !isCraEntry(entry));
 
   if (filtered.length === original.length) return;
 
