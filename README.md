@@ -184,6 +184,20 @@ The public ntfy.sh server is convenient but means your permission request detail
 
 If no response is received within the configured timeout (default: 120 seconds), the hook automatically **denies** the request. This fail-closed design ensures Claude Code does not proceed without explicit approval.
 
+## Disclaimer
+
+**Use at your own risk.** This tool automates permission control for Claude Code. Misuse or misconfiguration may result in unintended code execution, file modification, or data loss.
+
+The authors are not responsible for any damages or losses arising from the use of this tool, including but not limited to:
+
+- Accidental approval of dangerous commands (e.g., mistapping Approve on your phone)
+- Unintended denial of safe commands (e.g., timeout, network issues)
+- Security breaches if the topic name is compromised
+
+**Not a substitute for careful review.** The push notification shows the tool name and a brief summary, but not the full context of what Claude Code is doing. Always review what you are approving.
+
+This software is provided "AS IS" without warranty of any kind, as stated in the [MIT License](LICENSE).
+
 ## Requirements
 
 - **Node.js** >= 18.0.0
