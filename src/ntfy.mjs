@@ -69,6 +69,7 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
             if (parsed.requestId === requestId) {
               clearTimeout(timer);
               controller.signal.removeEventListener('abort', onAbort);
+              controller.abort();
               return { approved: parsed.approved };
             }
           } catch {

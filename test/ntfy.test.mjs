@@ -433,6 +433,43 @@ describe("waitForResponse", () => {
       `Expected SSE endpoint URL, got: ${url}`
     );
   });
+
+  it("should abort the SSE connection after receiving a matching response", async () => {
+    const events = [
+      {
+        event: "message",
+        message: JSON.stringify({ requestId: "req-abort", approved: true }),
+      },
+    ];
+
+    /** @type {AbortSignal | undefined} */
+    let capturedSignal;
+
+    const mockFetch = mock.fn(async (url, options) => {
+      capturedSignal = options?.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: createSSEStream(events),
+      };
+    });
+    globalThis.fetch = mockFetch;
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-abort",
+      timeout: 5000,
+    });
+
+    assert.deepEqual(result, { approved: true });
+    assert.ok(capturedSignal, "fetch should have been called with a signal");
+    assert.equal(
+      capturedSignal.aborted,
+      true,
+      "AbortController should be aborted after matching response to close SSE connection"
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
