@@ -8,7 +8,7 @@
  */
 export async function sendNotification({ server, topic, title, message, actions, requestId }) {
   const baseUrl = server.replace(/\/+$/, '');
-  const url = `${baseUrl}/${topic}`;
+  const url = baseUrl;
 
   const response = await fetch(url, {
     method: 'POST',

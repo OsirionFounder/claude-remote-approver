@@ -89,7 +89,7 @@ describe("sendNotification", () => {
     assert.equal(typeof sendNotification, "function");
   });
 
-  it("should POST to the correct URL: server/topic", async () => {
+  it("should POST to the base server URL for JSON publishing", async () => {
     const mockFetch = createMockFetch();
     globalThis.fetch = mockFetch;
 
@@ -103,7 +103,7 @@ describe("sendNotification", () => {
     });
 
     assert.equal(mockFetch.calls.length, 1);
-    assert.equal(mockFetch.calls[0].url, "https://ntfy.sh/my-topic");
+    assert.equal(mockFetch.calls[0].url, "https://ntfy.sh");
   });
 
   it("should use HTTP POST method", async () => {
@@ -271,8 +271,8 @@ describe("sendNotification", () => {
       requestId: "req-008",
     });
 
-    // Should not produce double slash: https://ntfy.sh//my-topic
-    assert.equal(mockFetch.calls[0].url, "https://ntfy.sh/my-topic");
+    // Should strip trailing slash and POST to base URL only
+    assert.equal(mockFetch.calls[0].url, "https://ntfy.sh");
   });
 });
 
