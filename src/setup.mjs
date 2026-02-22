@@ -12,11 +12,14 @@ function isCraEntry(entry) {
 }
 
 /**
- * Returns the hook command string: `node <absolute_path_to_src/hook.mjs>`
+ * Returns the hook command string: `node <absolute_path_to_bin/cli.mjs> hook`
  */
 export function getHookCommand() {
-  const hookPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "hook.mjs");
-  return `node "${hookPath}"`;
+  const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "cli.mjs");
+  if (!fs.existsSync(cliPath)) {
+    throw new Error(`CLI entry point not found: ${cliPath}`);
+  }
+  return `node "${cliPath}" hook`;
 }
 
 /**

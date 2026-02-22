@@ -17,7 +17,7 @@ Claude Code
   │
   │  PermissionRequest hook (stdin JSON)
   ▼
-hook.mjs
+cli.mjs hook
   │
   ├──POST──▶ ntfy.sh/<topic>          ──push──▶  Phone (ntfy app)
   │                                                 │
@@ -31,7 +31,7 @@ Claude Code continues or stops
 ```
 
 1. Claude Code invokes the hook, piping the tool request as JSON to stdin.
-2. `hook.mjs` sends a notification to your ntfy topic with **Approve** and **Deny** action buttons.
+2. `cli.mjs hook` sends a notification to your ntfy topic with **Approve** and **Deny** action buttons.
 3. The hook subscribes to a response topic (`<topic>-response`) via server-sent events.
 4. When you tap a button on your phone, ntfy.sh publishes your decision to the response topic.
 5. The hook reads the decision, writes `{"behavior":"allow"}` or `{"behavior":"deny"}` to stdout, and exits.

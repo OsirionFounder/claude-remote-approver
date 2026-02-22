@@ -5,9 +5,9 @@
  * - runSetup: generates topic, saves config, registers hook, returns result
  * - registerHook: creates settings.json, preserves existing settings/hooks,
  *   sets correct PermissionRequest hook structure
- * - getHookCommand: returns valid command string containing hook.mjs
+ * - getHookCommand: returns valid command string containing cli.mjs hook
  *
- * TDD Red phase — all tests must FAIL because the implementation does not exist yet.
+ * All tests should PASS against the current implementation.
  */
 
 import { describe, it, before, after } from "node:test";
@@ -112,8 +112,8 @@ describe("runSetup", () => {
     );
     assert.equal(settings.hooks.PermissionRequest[0].hooks[0].type, "command");
     assert.ok(
-      settings.hooks.PermissionRequest[0].hooks[0].command.includes("hook.mjs"),
-      `hook command should include "hook.mjs", got: "${settings.hooks.PermissionRequest[0].hooks[0].command}"`
+      settings.hooks.PermissionRequest[0].hooks[0].command.includes("cli.mjs"),
+      `hook command should include "cli.mjs", got: "${settings.hooks.PermissionRequest[0].hooks[0].command}"`
     );
   });
 
@@ -366,40 +366,48 @@ describe("getHookCommand", () => {
     );
   });
 
-  it("should contain hook.mjs in the path", () => {
+  it("should contain cli.mjs in the path", () => {
     const cmd = getHookCommand();
     assert.ok(
-      cmd.includes("hook.mjs"),
-      `Command should include "hook.mjs", got: "${cmd}"`
+      cmd.includes("cli.mjs"),
+      `Command should include "cli.mjs", got: "${cmd}"`
+    );
+  });
+
+  it("should end with 'hook' subcommand argument", () => {
+    const cmd = getHookCommand();
+    assert.ok(
+      cmd.endsWith(" hook"),
+      `Command should end with " hook", got: "${cmd}"`
     );
   });
 
   it("should wrap the path in double quotes", () => {
     const cmd = getHookCommand();
-    // After "node ", the path should be wrapped in double quotes
-    const afterNode = cmd.slice("node ".length);
+    // After "node ", strip the trailing " hook" to isolate the quoted path
+    const quotedPath = cmd.slice("node ".length).replace(/ hook$/, "");
     assert.ok(
-      afterNode.startsWith('"') && afterNode.endsWith('"'),
-      `Path should be wrapped in double quotes, got: "${afterNode}"`
+      quotedPath.startsWith('"') && quotedPath.endsWith('"'),
+      `Path should be wrapped in double quotes, got: "${quotedPath}"`
     );
   });
 
   it("should contain an absolute path (starts with /)", () => {
     const cmd = getHookCommand();
-    // Extract the path part after "node " and strip surrounding quotes
-    const hookPath = cmd.replace(/^node\s+/, "").replace(/^"|"$/g, "");
+    // Extract the path: strip "node ", trailing " hook", and surrounding quotes
+    const hookPath = cmd.replace(/^node\s+/, "").replace(/ hook$/, "").replace(/^"|"$/g, "");
     assert.ok(
       path.isAbsolute(hookPath),
       `Hook path should be absolute, got: "${hookPath}"`
     );
   });
 
-  it("should point to src/hook.mjs relative to the package root", () => {
+  it("should point to bin/cli.mjs relative to the package root", () => {
     const cmd = getHookCommand();
-    const hookPath = cmd.replace(/^node\s+/, "").replace(/^"|"$/g, "");
+    const hookPath = cmd.replace(/^node\s+/, "").replace(/ hook$/, "").replace(/^"|"$/g, "");
     assert.ok(
-      hookPath.endsWith(path.join("src", "hook.mjs")),
-      `Hook path should end with "src/hook.mjs", got: "${hookPath}"`
+      hookPath.endsWith(path.join("bin", "cli.mjs")),
+      `Hook path should end with "bin/cli.mjs", got: "${hookPath}"`
     );
   });
 });
