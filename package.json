@@ -1,6 +1,6 @@
 {
   "name": "claude-remote-approver",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Approve or deny Claude Code permission prompts remotely from your phone via ntfy.sh",
   "type": "module",
   "bin": {

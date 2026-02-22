@@ -1,5 +1,7 @@
 // src/ntfy.mjs
 
+import { debug } from "./debug.mjs";
+
 /**
  * Send a push notification via ntfy.
  *
@@ -30,8 +32,11 @@ export async function sendNotification({ server, topic, title, message, actions,
  * @returns {Promise<{ approved: boolean }>}
  */
 export async function waitForResponse({ server, topic, requestId, timeout }) {
+  const startTime = Date.now();
   const baseUrl = server.replace(/\/+$/, '');
   const url = `${baseUrl}/${topic}-response/json`;
+
+  debug(`waitForResponse: start url=${url} requestId=${requestId} timeout=${timeout}`);
 
   const controller = new AbortController();
 
@@ -40,6 +45,7 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
 
   try {
     const response = await fetch(url, { signal: controller.signal });
+    debug(`waitForResponse: fetch connected, status=${response.status}`);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -55,7 +61,11 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        debug(`waitForResponse: read done=${done} valueLen=${value?.length}`);
+        if (done) {
+          debug(`waitForResponse: stream ended (done=true)`);
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -66,10 +76,16 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
           try {
             const event = JSON.parse(line);
             const parsed = JSON.parse(event.message);
+            debug(`waitForResponse: line parsed, event.message=${event.message?.substring(0, 100)}`);
             if (parsed.requestId === requestId) {
+              debug(`waitForResponse: MATCH found! approved=${parsed.approved}`);
               clearTimeout(timer);
               controller.signal.removeEventListener('abort', onAbort);
-              return { approved: parsed.approved };
+              const result = { approved: parsed.approved };
+              debug(`waitForResponse: returning approved=${result.approved}`);
+              return result;
+            } else {
+              debug(`waitForResponse: skip requestId=${parsed.requestId}`);
             }
           } catch {
             // skip non-JSON lines
@@ -81,13 +97,20 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
     }
 
     clearTimeout(timer);
-    return { approved: false };
+    const result = { approved: false };
+    debug(`waitForResponse: returning approved=${result.approved}`);
+    return result;
   } catch (err) {
     if (timer !== undefined) clearTimeout(timer);
-    if (err?.name !== "AbortError") {
+    if (err?.name === "AbortError") {
+      debug(`waitForResponse: TIMEOUT after ${Date.now() - startTime}ms`);
+    } else {
+      debug(`waitForResponse: ERROR ${err?.name}: ${err?.message}`);
       console.error("[claude-remote-approver] waitForResponse error:", err);
     }
-    return { approved: false };
+    const result = { approved: false };
+    debug(`waitForResponse: returning approved=${result.approved}`);
+    return result;
   }
 }
 
