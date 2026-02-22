@@ -19,7 +19,6 @@ export function buildActions(server, topic, requestId) {
       url,
       body: JSON.stringify({ requestId, approved: true }),
       method: "POST",
-      headers: { "Content-Type": "application/json" },
     },
     {
       action: "http",
@@ -27,7 +26,6 @@ export function buildActions(server, topic, requestId) {
       url,
       body: JSON.stringify({ requestId, approved: false }),
       method: "POST",
-      headers: { "Content-Type": "application/json" },
     },
   ];
 }

@@ -69,11 +69,11 @@ describe("buildActions", () => {
     assert.equal(actions[1].method, "POST");
   });
 
-  it("should include Content-Type: application/json header for both actions", () => {
+  it("should not include Content-Type header to avoid ntfy JSON publishing mode", () => {
     const actions = buildActions("https://ntfy.sh", "my-topic", "req-006");
 
-    assert.deepEqual(actions[0].headers, { "Content-Type": "application/json" });
-    assert.deepEqual(actions[1].headers, { "Content-Type": "application/json" });
+    assert.equal(actions[0].headers, undefined);
+    assert.equal(actions[1].headers, undefined);
   });
 
   it("should include requestId and approved:true in Approve body", () => {
