@@ -24,44 +24,71 @@ export async function sendNotification({ server, topic, title, message, actions,
 }
 
 /**
- * Poll the response topic and wait for a matching requestId.
+ * Subscribe to the response topic via SSE and wait for a matching requestId.
  *
- * @param {{ server: string, topic: string, requestId: string, timeout: number, pollInterval?: number }} params
+ * @param {{ server: string, topic: string, requestId: string, timeout: number }} params
  * @returns {Promise<{ approved: boolean }>}
  */
-export async function waitForResponse({ server, topic, requestId, timeout, pollInterval = 2000 }) {
+export async function waitForResponse({ server, topic, requestId, timeout }) {
   const baseUrl = server.replace(/\/+$/, '');
-  const sinceTimestamp = Math.floor(Date.now() / 1000);
-  const pollUrl = `${baseUrl}/${topic}-response/json?poll=1&since=${sinceTimestamp}`;
-  const startTime = Date.now();
+  const url = `${baseUrl}/${topic}-response/json`;
 
-  while (Date.now() - startTime < timeout) {
+  const controller = new AbortController();
+
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    // Listen to abort so we can cancel the reader even when the mock stream
+    // never closes (the real fetch would propagate the signal, but mocks may not).
+    const onAbort = () => reader.cancel();
+    controller.signal.addEventListener('abort', onAbort);
+
+    // Start the timeout AFTER fetch resolves so we measure waiting time only.
+    timer = setTimeout(() => controller.abort(), timeout);
+
     try {
-      const response = await fetch(pollUrl);
-      if (!response.ok) continue;
-      const text = await response.text();
-      const lines = text.trim().split('\n');
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const event = JSON.parse(line);
-          const parsed = JSON.parse(event.message);
-          if (parsed.requestId === requestId) {
-            return { approved: parsed.approved === true };
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            const parsed = JSON.parse(event.message);
+            if (parsed.requestId === requestId) {
+              clearTimeout(timer);
+              controller.signal.removeEventListener('abort', onAbort);
+              return { approved: parsed.approved };
+            }
+          } catch {
+            // skip non-JSON lines
           }
-        } catch {
-          // skip non-JSON lines
         }
       }
-    } catch (err) {
-      console.error("[claude-remote-approver] poll error:", err);
+    } finally {
+      controller.signal.removeEventListener('abort', onAbort);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    clearTimeout(timer);
+    return { approved: false };
+  } catch (err) {
+    if (timer !== undefined) clearTimeout(timer);
+    if (err?.name !== "AbortError") {
+      console.error("[claude-remote-approver] waitForResponse error:", err);
+    }
+    return { approved: false };
   }
-
-  return { approved: false };
 }
 
 /**
