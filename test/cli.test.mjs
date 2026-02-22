@@ -76,7 +76,7 @@ function createDeps(overrides = {}) {
     processHook: mock.fn(
       async () =>
         overrides.hookResult ?? {
-          hookSpecificOutput: { decision: { behavior: "allow" } },
+          hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } },
         },
     ),
     runSetup: mock.fn(
@@ -375,7 +375,7 @@ describe("main", () => {
         }),
         stdout,
         hookResult: {
-          hookSpecificOutput: { decision: { behavior: "allow" } },
+          hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } },
         },
       });
 
@@ -397,7 +397,7 @@ describe("main", () => {
         }),
         stdout,
         hookResult: {
-          hookSpecificOutput: { decision: { behavior: "deny" } },
+          hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } },
         },
       });
 
@@ -422,6 +422,7 @@ describe("main", () => {
       assert.ok(output.endsWith("\n"), "hook output should end with a newline");
       const parsed = JSON.parse(output);
       assert.equal(parsed.hookSpecificOutput.decision.behavior, "deny");
+      assert.equal(parsed.hookSpecificOutput.hookEventName, "PermissionRequest");
       assert.equal(
         deps.processHook.mock.callCount(),
         0,
@@ -449,6 +450,7 @@ describe("main", () => {
       assert.ok(output.endsWith("\n"), "hook output should end with a newline");
       const parsed = JSON.parse(output);
       assert.equal(parsed.hookSpecificOutput.decision.behavior, "deny");
+      assert.equal(parsed.hookSpecificOutput.hookEventName, "PermissionRequest");
     });
   });
 

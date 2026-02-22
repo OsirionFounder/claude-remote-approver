@@ -1,7 +1,6 @@
 // src/hook.mjs
 
 import crypto from "node:crypto";
-import { debug } from "./debug.mjs";
 
 /**
  * Build ntfy action buttons for Approve / Deny.
@@ -43,11 +42,10 @@ export function buildActions(server, topic, requestId) {
  * @returns {Promise<object>} Decision JSON
  */
 export async function processHook(input, { loadConfig, sendNotification, waitForResponse, formatToolInfo }) {
-  debug(`processHook: start, tool=${input.tool_name}`);
   const config = loadConfig();
 
   if (!config.topic) {
-    return { hookSpecificOutput: { decision: { behavior: "deny" } } };
+    return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
   }
 
   const requestId = crypto.randomUUID();
@@ -63,27 +61,22 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
       actions,
       requestId,
     });
-    debug(`processHook: notification sent, requestId=${requestId}`);
   } catch (err) {
-    debug(`processHook: notification FAILED: ${err?.message}`);
-    return { hookSpecificOutput: { decision: { behavior: "deny" } } };
+    return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
   }
 
   let response;
   try {
-    debug(`processHook: calling waitForResponse, timeout=${config.timeout * 1000}ms`);
     response = await waitForResponse({
       server: config.ntfyServer,
       topic: config.topic,
       requestId,
       timeout: config.timeout * 1000,
     });
-    debug(`processHook: waitForResponse returned approved=${response.approved}`);
   } catch (err) {
-    debug(`processHook: waitForResponse THREW: ${err?.message}`);
-    return { hookSpecificOutput: { decision: { behavior: "deny" } } };
+    return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
   }
 
   const behavior = response.approved ? "allow" : "deny";
-  return { hookSpecificOutput: { decision: { behavior } } };
+  return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior } } };
 }

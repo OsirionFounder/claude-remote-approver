@@ -87,7 +87,7 @@ export async function main(args, deps) {
       try {
         input = JSON.parse(deps.stdin);
       } catch {
-        const deny = { hookSpecificOutput: { decision: { behavior: "deny" } } };
+        const deny = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
         deps.stdout.write(JSON.stringify(deny) + "\n");
         break;
       }
@@ -96,7 +96,7 @@ export async function main(args, deps) {
       try {
         result = await deps.processHook(input, deps);
       } catch {
-        const deny = { hookSpecificOutput: { decision: { behavior: "deny" } } };
+        const deny = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
         deps.stdout.write(JSON.stringify(deny) + "\n");
         break;
       }
@@ -178,22 +178,6 @@ const isMain =
   })();
 
 if (isMain) {
-  const { debug } = await import("../src/debug.mjs");
-
-  debug(`=== hook process started, pid=${process.pid}, ppid=${process.ppid}, args=${JSON.stringify(process.argv.slice(2))}`);
-
-  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP', 'SIGPIPE']) {
-    process.on(sig, () => {
-      debug(`SIGNAL received: ${sig}`);
-    });
-  }
-  process.on('exit', (code) => {
-    debug(`process EXIT code=${code}`);
-  });
-  process.on('uncaughtException', (err) => {
-    debug(`UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}`);
-  });
-
   const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
 
   const { loadConfig, saveConfig, generateTopic } = await import(
@@ -215,33 +199,6 @@ if (isMain) {
     }
     stdinData = Buffer.concat(chunks).toString("utf-8");
   }
-
-  debug(`stdin read complete, length=${stdinData.length}, data=${stdinData.substring(0, 200)}`);
-
-  const originalMain = main;
-  const wrappedMain = async (mainArgs, mainDeps) => {
-    const command = mainArgs[0];
-    if (command === "hook") {
-      debug(`hook: calling processHook`);
-      const origProcessHook = mainDeps.processHook;
-      const origStdout = mainDeps.stdout;
-      mainDeps.processHook = async (...phArgs) => {
-        const result = await origProcessHook(...phArgs);
-        debug(`hook: processHook returned ${JSON.stringify(result)}`);
-        return result;
-      };
-      const origWrite = origStdout.write.bind(origStdout);
-      mainDeps.stdout = {
-        write: (data) => {
-          debug(`hook: writing to stdout`);
-          const ret = origWrite(data);
-          debug(`hook: stdout written, exiting`);
-          return ret;
-        },
-      };
-    }
-    return originalMain(mainArgs, mainDeps);
-  };
 
   const deps = {
     loadConfig,
@@ -266,5 +223,5 @@ if (isMain) {
     exit: process.exit,
   };
 
-  await wrappedMain(args, deps);
+  await main(args, deps);
 }

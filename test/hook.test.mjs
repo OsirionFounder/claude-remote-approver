@@ -162,6 +162,7 @@ describe("processHook", () => {
 
     assert.deepEqual(result, {
       hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
         decision: { behavior: "allow" },
       },
     });
@@ -176,6 +177,7 @@ describe("processHook", () => {
 
     assert.deepEqual(result, {
       hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
         decision: { behavior: "deny" },
       },
     });
@@ -195,7 +197,12 @@ describe("processHook", () => {
 
     const result = await processHook(sampleInput, deps);
 
-    assert.deepEqual(result.hookSpecificOutput.decision.behavior, "deny");
+    assert.deepEqual(result, {
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: { behavior: "deny" },
+      },
+    });
   });
 
   it("should not call sendNotification when config has no topic", async () => {
@@ -324,6 +331,7 @@ describe("processHook", () => {
 
     assert.deepEqual(result, {
       hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
         decision: { behavior: "deny" },
       },
     });
@@ -339,6 +347,7 @@ describe("processHook", () => {
 
     assert.deepEqual(result, {
       hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
         decision: { behavior: "deny" },
       },
     });
