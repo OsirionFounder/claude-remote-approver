@@ -341,9 +341,9 @@ describe("main", () => {
   describe("hook subcommand", () => {
     it("should read JSON from stdin, call processHook, and write result to stdout", async () => {
       const hookInput = {
-        hookName: "PreToolUse",
-        toolName: "Bash",
-        toolInput: { command: "ls -la" },
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command: "ls -la" },
       };
       const stdout = createMockWriter();
       const deps = createDeps({
@@ -361,17 +361,17 @@ describe("main", () => {
 
       // Verify the input passed to processHook
       const callArgs = deps.processHook.mock.calls[0].arguments[0];
-      assert.equal(callArgs.toolName, "Bash");
-      assert.deepEqual(callArgs.toolInput, { command: "ls -la" });
+      assert.equal(callArgs.tool_name, "Bash");
+      assert.deepEqual(callArgs.tool_input, { command: "ls -la" });
     });
 
     it("should output valid JSON for allow decision", async () => {
       const stdout = createMockWriter();
       const deps = createDeps({
         stdin: JSON.stringify({
-          hookName: "PreToolUse",
-          toolName: "Bash",
-          toolInput: { command: "echo allowed" },
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "echo allowed" },
         }),
         stdout,
         hookResult: {
@@ -391,9 +391,9 @@ describe("main", () => {
       const stdout = createMockWriter();
       const deps = createDeps({
         stdin: JSON.stringify({
-          hookName: "PreToolUse",
-          toolName: "Bash",
-          toolInput: { command: "rm -rf /" },
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "rm -rf /" },
         }),
         stdout,
         hookResult: {
@@ -433,9 +433,9 @@ describe("main", () => {
       const stdout = createMockWriter();
       const deps = createDeps({
         stdin: JSON.stringify({
-          hookName: "PreToolUse",
-          toolName: "Bash",
-          toolInput: { command: "ls" },
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "ls" },
         }),
         stdout,
         processHook: mock.fn(async () => {

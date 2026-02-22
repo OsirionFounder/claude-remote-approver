@@ -144,9 +144,9 @@ describe("processHook", () => {
 
   /** Standard input mimicking a Claude Code hook payload. */
   const sampleInput = {
-    hookName: "PreToolUse",
-    toolName: "Bash",
-    toolInput: { command: "echo hello" },
+    hook_event_name: "PreToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "echo hello" },
   };
 
   it("should be a function exported from the module", () => {
@@ -353,8 +353,8 @@ describe("processHook", () => {
 
     assert.equal(deps.formatToolInfo.mock.callCount(), 1);
     const callArgs = deps.formatToolInfo.mock.calls[0].arguments[0];
-    assert.equal(callArgs.toolName, "Bash");
-    assert.deepEqual(callArgs.toolInput, { command: "echo hello" });
+    assert.equal(callArgs.tool_name, "Bash");
+    assert.deepEqual(callArgs.tool_input, { command: "echo hello" });
   });
 
   // ==================== loadConfig ====================

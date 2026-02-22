@@ -94,24 +94,24 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
 /**
  * Format tool information for display in the notification.
  *
- * @param {{ hookName: string, toolName: string, toolInput: Record<string, unknown> }} params
+ * @param {{ hook_event_name: string, tool_name: string, tool_input: Record<string, unknown> }} params
  * @returns {{ title: string, message: string }}
  */
-export function formatToolInfo({ hookName, toolName, toolInput }) {
-  const title = `Claude Code: ${toolName}`;
+export function formatToolInfo({ hook_event_name, tool_name, tool_input }) {
+  const title = `Claude Code: ${tool_name}`;
   let message;
 
-  switch (toolName) {
+  switch (tool_name) {
     case 'Bash':
-      message = toolInput?.command ?? JSON.stringify(toolInput);
+      message = tool_input?.command ?? JSON.stringify(tool_input);
       break;
     case 'Read':
     case 'Write':
     case 'Edit':
-      message = toolInput?.file_path ?? JSON.stringify(toolInput);
+      message = tool_input?.file_path ?? JSON.stringify(tool_input);
       break;
     default:
-      message = JSON.stringify(toolInput);
+      message = JSON.stringify(tool_input);
       break;
   }
 

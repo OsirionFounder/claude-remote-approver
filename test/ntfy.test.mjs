@@ -446,9 +446,9 @@ describe("formatToolInfo", () => {
 
   it("should return an object with title and message properties", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Bash",
-      toolInput: { command: "ls -la" },
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "ls -la" },
     });
 
     assert.ok(
@@ -461,9 +461,9 @@ describe("formatToolInfo", () => {
 
   it("should include the tool name in the title", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Bash",
-      toolInput: { command: "echo hello" },
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "echo hello" },
     });
 
     assert.ok(
@@ -474,9 +474,9 @@ describe("formatToolInfo", () => {
 
   it("should format Bash tool input showing the command", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Bash",
-      toolInput: { command: "npm install express" },
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "npm install express" },
     });
 
     assert.ok(
@@ -487,9 +487,9 @@ describe("formatToolInfo", () => {
 
   it("should format Read tool input showing the file path", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Read",
-      toolInput: { file_path: "/home/user/project/src/index.ts" },
+      hook_event_name: "PreToolUse",
+      tool_name: "Read",
+      tool_input: { file_path: "/home/user/project/src/index.ts" },
     });
 
     assert.ok(
@@ -500,9 +500,9 @@ describe("formatToolInfo", () => {
 
   it("should format Write tool input showing the file path", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Write",
-      toolInput: {
+      hook_event_name: "PreToolUse",
+      tool_name: "Write",
+      tool_input: {
         file_path: "/home/user/project/config.json",
         content: '{ "key": "value" }',
       },
@@ -516,9 +516,9 @@ describe("formatToolInfo", () => {
 
   it("should return string values for both title and message", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Bash",
-      toolInput: { command: "pwd" },
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "pwd" },
     });
 
     assert.equal(typeof result.title, "string", "title should be a string");
@@ -527,9 +527,9 @@ describe("formatToolInfo", () => {
 
   it("should handle Bash tool input with missing command property", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Bash",
-      toolInput: { description: "no command here" },
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { description: "no command here" },
     });
 
     assert.equal(typeof result.message, "string");
@@ -542,9 +542,9 @@ describe("formatToolInfo", () => {
 
   it("should handle Read tool input with missing file_path property", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Read",
-      toolInput: { content: "some content" },
+      hook_event_name: "PreToolUse",
+      tool_name: "Read",
+      tool_input: { content: "some content" },
     });
 
     assert.equal(typeof result.message, "string");
@@ -557,9 +557,9 @@ describe("formatToolInfo", () => {
 
   it("should handle Edit tool input with missing file_path property", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "Edit",
-      toolInput: { old_string: "foo", new_string: "bar" },
+      hook_event_name: "PreToolUse",
+      tool_name: "Edit",
+      tool_input: { old_string: "foo", new_string: "bar" },
     });
 
     assert.equal(typeof result.message, "string");
@@ -572,9 +572,9 @@ describe("formatToolInfo", () => {
 
   it("should handle unknown tool names gracefully", () => {
     const result = formatToolInfo({
-      hookName: "PreToolUse",
-      toolName: "UnknownTool",
-      toolInput: { some: "data" },
+      hook_event_name: "PreToolUse",
+      tool_name: "UnknownTool",
+      tool_input: { some: "data" },
     });
 
     assert.ok(
