@@ -49,6 +49,41 @@ export function registerHook(settingsPath, hookCommand) {
 }
 
 /**
+ * Removes the claude-remote-approver hook entry from Claude's settings.json.
+ * If the file does not exist, does nothing.
+ */
+export function unregisterHook(settingsPath) {
+  let settings;
+  try {
+    settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+  } catch (err) {
+    if (err.code === "ENOENT") return;
+    throw err;
+  }
+
+  if (!settings.hooks?.PermissionRequest) return;
+
+  const original = settings.hooks.PermissionRequest;
+  const filtered = original.filter(
+    (h) => !(h.command && h.command.includes("claude-remote-approver"))
+  );
+
+  if (filtered.length === original.length) return;
+
+  if (filtered.length === 0) {
+    delete settings.hooks.PermissionRequest;
+  } else {
+    settings.hooks.PermissionRequest = filtered;
+  }
+
+  if (Object.keys(settings.hooks).length === 0) {
+    delete settings.hooks;
+  }
+
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+}
+
+/**
  * Runs the full setup flow:
  * 1. Generate a topic
  * 2. Build and save config

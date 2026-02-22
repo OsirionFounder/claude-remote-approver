@@ -3,12 +3,14 @@
 /**
  * CLI entry point for claude-remote-approver.
  *
- * Subcommands: setup | test | status | hook
+ * Subcommands: setup | test | status | enable | disable | uninstall | hook
  * All I/O goes through the injected `deps` object so the module is fully testable.
  */
 
 import { fileURLToPath } from "node:url";
-import { realpathSync } from "node:fs";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
 // ---------------------------------------------------------------------------
 // main
@@ -16,11 +18,11 @@ import { realpathSync } from "node:fs";
 
 export async function main(args, deps) {
   if (args.includes("--help") || args.includes("-h")) {
-    deps.stdout.write("Usage: claude-remote-approver <command>\n\nCommands:\n  setup   Set up remote approval\n  test    Send a test notification\n  status  Show current configuration\n  hook    Process a Claude Code hook (internal)\n");
+    deps.stdout.write("Usage: claude-remote-approver <command>\n\nCommands:\n  setup       Set up remote approval\n  test        Send a test notification\n  status      Show current configuration\n  enable      Re-enable the hook\n  disable     Temporarily disable the hook\n  uninstall   Remove hook and delete configuration\n  hook        Process a Claude Code hook (internal)\n");
     return;
   }
   if (args.includes("--version") || args.includes("-v")) {
-    deps.stdout.write("0.1.0\n");
+    deps.stdout.write("0.2.0\n");
     return;
   }
 
@@ -86,9 +88,56 @@ export async function main(args, deps) {
       break;
     }
 
+    case "uninstall": {
+      try {
+        deps.unregisterHook(deps.settingsPath);
+      } catch (err) {
+        deps.stderr.write(`Error: Failed to remove hook: ${err.message}\n`);
+        break;
+      }
+      try {
+        deps.unlinkSync(deps.configPath);
+      } catch (err) {
+        if (err.code !== "ENOENT") {
+          deps.stderr.write(`Error: Failed to delete config: ${err.message}\n`);
+          break;
+        }
+      }
+      deps.stdout.write("Uninstalled. Hook removed and configuration deleted.\n");
+      break;
+    }
+
+    case "disable": {
+      try {
+        deps.unregisterHook(deps.settingsPath);
+      } catch (err) {
+        deps.stderr.write(`Error: Failed to disable hook: ${err.message}\n`);
+        break;
+      }
+      deps.stdout.write("Hook disabled. Run 'claude-remote-approver enable' to re-enable.\n");
+      break;
+    }
+
+    case "enable": {
+      const config = deps.loadConfig();
+      if (!config.topic) {
+        deps.stderr.write("Error: No topic configured. Run 'claude-remote-approver setup' first.\n");
+        deps.exit(1);
+        break;
+      }
+      try {
+        deps.registerHook(deps.settingsPath, deps.getHookCommand());
+      } catch (err) {
+        deps.stderr.write(`Error: Failed to enable hook: ${err.message}\n`);
+        break;
+      }
+      deps.stdout.write("Hook enabled.\n");
+      break;
+    }
+
     default: {
       deps.stderr.write(
-        "Usage: claude-remote-approver <command>\n\nCommands:\n  setup   Configure topic and register hook\n  test    Send a test notification\n  status  Show current configuration\n  hook    Process a Claude Code hook (reads JSON from stdin)\n",
+        "Usage: claude-remote-approver <command>\n\nCommands:\n  setup       Set up remote approval\n  test        Send a test notification\n  status      Show current configuration\n  enable      Re-enable the hook\n  disable     Temporarily disable the hook\n  uninstall   Remove hook and delete configuration\n  hook        Process a Claude Code hook (internal)\n",
       );
       deps.exit(1);
       break;
@@ -105,7 +154,7 @@ const isMain =
   process.argv[1] &&
   (() => {
     try {
-      return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+      return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
     } catch {
       return false;
     }
@@ -119,7 +168,7 @@ if (isMain) {
     "../src/ntfy.mjs"
   );
   const { processHook } = await import("../src/hook.mjs");
-  const { runSetup } = await import("../src/setup.mjs");
+  const { runSetup, registerHook, getHookCommand, unregisterHook } = await import("../src/setup.mjs");
 
   const args = process.argv.slice(2);
 
@@ -141,6 +190,12 @@ if (isMain) {
     formatToolInfo,
     processHook,
     runSetup,
+    registerHook,
+    getHookCommand,
+    unregisterHook,
+    unlinkSync: fs.unlinkSync,
+    configPath: (await import("../src/config.mjs")).CONFIG_PATH,
+    settingsPath: path.join(os.homedir(), ".claude", "settings.json"),
     stdout: process.stdout,
     stderr: process.stderr,
     stdin: stdinData,

@@ -108,6 +108,39 @@ claude-remote-approver status
 # Timeout: 120s
 ```
 
+### `enable`
+
+Re-enable the hook after it has been disabled.
+
+```bash
+claude-remote-approver enable
+# Hook enabled.
+```
+
+This reads the existing configuration and re-registers the hook in Claude Code's settings. You must have run `setup` at least once before using this command.
+
+### `disable`
+
+Temporarily disable the hook without removing your configuration.
+
+```bash
+claude-remote-approver disable
+# Hook disabled. Run 'claude-remote-approver enable' to re-enable.
+```
+
+Your topic and settings are preserved. Use `enable` to re-activate.
+
+### `uninstall`
+
+Remove the hook and delete all configuration.
+
+```bash
+claude-remote-approver uninstall
+# Uninstalled. Hook removed and configuration deleted.
+```
+
+This removes the hook entry from Claude Code's settings.json and deletes `~/.claude-remote-approver.json`. To use the tool again, run `setup`.
+
 ### `hook`
 
 Internal command. Claude Code calls this automatically via the registered hook. It reads a JSON payload from stdin and writes a decision to stdout. You do not need to run this manually.

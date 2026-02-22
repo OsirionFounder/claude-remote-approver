@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runSetup, registerHook, getHookCommand } from "../src/setup.mjs";
+import { runSetup, registerHook, getHookCommand, unregisterHook } from "../src/setup.mjs";
 
 // ===========================================================================
 // runSetup
@@ -366,6 +366,185 @@ describe("getHookCommand", () => {
     assert.ok(
       hookPath.endsWith(path.join("src", "hook.mjs")),
       `Hook path should end with "src/hook.mjs", got: "${hookPath}"`
+    );
+  });
+});
+
+// ===========================================================================
+// unregisterHook
+// ===========================================================================
+
+describe("unregisterHook", () => {
+  let tmpDir;
+
+  before(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cra-unhook-test-"));
+  });
+
+  after(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("should be a function", () => {
+    assert.equal(typeof unregisterHook, "function");
+  });
+
+  it("should do nothing when settings file does not exist", () => {
+    const settingsPath = path.join(tmpDir, "nonexistent-settings.json");
+
+    // Should not throw
+    assert.doesNotThrow(() => {
+      unregisterHook(settingsPath);
+    });
+
+    // File should still not exist
+    assert.equal(
+      fs.existsSync(settingsPath),
+      false,
+      "settings file should not have been created"
+    );
+  });
+
+  it("should do nothing when settings has no hooks", () => {
+    const settingsPath = path.join(tmpDir, "no-hooks-settings.json");
+    const original = { autoUpdaterStatus: "disabled" };
+    fs.writeFileSync(settingsPath, JSON.stringify(original, null, 2));
+
+    unregisterHook(settingsPath);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.deepEqual(
+      settings,
+      original,
+      "settings should remain unchanged when no hooks exist"
+    );
+  });
+
+  it("should do nothing when settings has no PermissionRequest", () => {
+    const settingsPath = path.join(tmpDir, "no-perm-request-settings.json");
+    const original = {
+      hooks: {
+        PreToolUse: [{ type: "command", command: "echo pre" }],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(original, null, 2));
+
+    unregisterHook(settingsPath);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.deepEqual(
+      settings,
+      original,
+      "settings should remain unchanged when no PermissionRequest exists"
+    );
+  });
+
+  it("should remove only claude-remote-approver entries from PermissionRequest", () => {
+    const settingsPath = path.join(tmpDir, "remove-cra-settings.json");
+    const original = {
+      hooks: {
+        PermissionRequest: [
+          { type: "command", command: "echo other-hook" },
+          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(original, null, 2));
+
+    unregisterHook(settingsPath);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(
+      settings.hooks.PermissionRequest.length,
+      1,
+      "should have only 1 entry remaining"
+    );
+    assert.equal(
+      settings.hooks.PermissionRequest[0].command,
+      "echo other-hook",
+      "non-claude-remote-approver entry should remain"
+    );
+  });
+
+  it("should preserve other hook types when removing PermissionRequest entries", () => {
+    const settingsPath = path.join(tmpDir, "preserve-other-hooks-settings.json");
+    const original = {
+      hooks: {
+        PreToolUse: [{ type: "command", command: "echo pre-tool" }],
+        PermissionRequest: [
+          { type: "command", command: "echo other-hook" },
+          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(original, null, 2));
+
+    unregisterHook(settingsPath);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.deepEqual(
+      settings.hooks.PreToolUse,
+      [{ type: "command", command: "echo pre-tool" }],
+      "PreToolUse hooks should remain intact"
+    );
+    assert.equal(
+      settings.hooks.PermissionRequest.length,
+      1,
+      "should have only non-claude-remote-approver entry in PermissionRequest"
+    );
+  });
+
+  it("should delete PermissionRequest key when array becomes empty", () => {
+    const settingsPath = path.join(tmpDir, "delete-perm-key-settings.json");
+    const original = {
+      hooks: {
+        PreToolUse: [{ type: "command", command: "echo pre-tool" }],
+        PermissionRequest: [
+          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(original, null, 2));
+
+    unregisterHook(settingsPath);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(
+      settings.hooks.PermissionRequest,
+      undefined,
+      "PermissionRequest key should not exist when array becomes empty"
+    );
+    assert.deepEqual(
+      settings.hooks.PreToolUse,
+      [{ type: "command", command: "echo pre-tool" }],
+      "PreToolUse hooks should remain"
+    );
+  });
+
+  it("should delete hooks key when it becomes empty", () => {
+    const settingsPath = path.join(tmpDir, "delete-hooks-key-settings.json");
+    const original = {
+      autoUpdaterStatus: "disabled",
+      hooks: {
+        PermissionRequest: [
+          { type: "command", command: "node /path/claude-remote-approver/src/hook.mjs" },
+        ],
+      },
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(original, null, 2));
+
+    unregisterHook(settingsPath);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    assert.equal(
+      settings.hooks,
+      undefined,
+      "hooks key should not exist when it becomes empty"
+    );
+    assert.equal(
+      settings.autoUpdaterStatus,
+      "disabled",
+      "other top-level settings should remain"
     );
   });
 });

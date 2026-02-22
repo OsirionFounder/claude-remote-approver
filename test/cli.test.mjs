@@ -10,6 +10,9 @@
  * - main([], deps) / unknown command — writes help/usage to stderr
  * - main(['hook'], deps) — outputs valid JSON for allow decision
  * - main(['hook'], deps) — outputs valid JSON for deny decision
+ * - main(['uninstall'], deps) — unregisters hook, deletes config, handles ENOENT
+ * - main(['disable'], deps) — unregisters hook WITHOUT deleting config
+ * - main(['enable'], deps) — loads config, registers hook when topic exists
  *
  * TDD Red phase — all tests must FAIL because main is undefined (stub).
  */
@@ -358,6 +361,252 @@ describe("main", () => {
   });
 
   // =========================================================================
+  // uninstall subcommand
+  // =========================================================================
+
+  describe("uninstall subcommand", () => {
+    it("should call unregisterHook with settingsPath", async () => {
+      const deps = createDeps({
+        unregisterHook: mock.fn(() => {}),
+        settingsPath: "/fake/settings.json",
+        unlinkSync: mock.fn(() => {}),
+        configPath: "/fake/config.json",
+      });
+
+      await main(["uninstall"], deps);
+
+      assert.equal(
+        deps.unregisterHook.mock.callCount(),
+        1,
+        "unregisterHook should be called exactly once",
+      );
+      assert.equal(
+        deps.unregisterHook.mock.calls[0].arguments[0],
+        "/fake/settings.json",
+        "unregisterHook should be called with settingsPath",
+      );
+    });
+
+    it("should delete config file via unlinkSync", async () => {
+      const deps = createDeps({
+        unregisterHook: mock.fn(() => {}),
+        settingsPath: "/fake/settings.json",
+        unlinkSync: mock.fn(() => {}),
+        configPath: "/fake/config.json",
+      });
+
+      await main(["uninstall"], deps);
+
+      assert.equal(
+        deps.unlinkSync.mock.callCount(),
+        1,
+        "unlinkSync should be called exactly once",
+      );
+      assert.equal(
+        deps.unlinkSync.mock.calls[0].arguments[0],
+        "/fake/config.json",
+        "unlinkSync should be called with configPath",
+      );
+    });
+
+    it("should ignore ENOENT when config file does not exist", async () => {
+      const deps = createDeps({
+        unregisterHook: mock.fn(() => {}),
+        settingsPath: "/fake/settings.json",
+        unlinkSync: mock.fn(() => {
+          const err = new Error("ENOENT");
+          err.code = "ENOENT";
+          throw err;
+        }),
+        configPath: "/fake/config.json",
+      });
+
+      // Should not throw
+      await assert.doesNotReject(async () => {
+        await main(["uninstall"], deps);
+      });
+    });
+
+    it("should write completion message to stdout", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        unregisterHook: mock.fn(() => {}),
+        settingsPath: "/fake/settings.json",
+        unlinkSync: mock.fn(() => {}),
+        configPath: "/fake/config.json",
+      });
+
+      await main(["uninstall"], deps);
+
+      const output = stdout.output();
+      assert.ok(
+        output.length > 0,
+        "stdout should contain a completion message",
+      );
+      assert.ok(
+        !output.toLowerCase().includes("error"),
+        `stdout should not contain error messages, got: ${output}`,
+      );
+    });
+  });
+
+  // =========================================================================
+  // disable subcommand
+  // =========================================================================
+
+  describe("disable subcommand", () => {
+    it("should call unregisterHook with settingsPath", async () => {
+      const deps = createDeps({
+        unregisterHook: mock.fn(() => {}),
+        settingsPath: "/fake/settings.json",
+        unlinkSync: mock.fn(() => {}),
+        configPath: "/fake/config.json",
+      });
+
+      await main(["disable"], deps);
+
+      assert.equal(
+        deps.unregisterHook.mock.callCount(),
+        1,
+        "unregisterHook should be called exactly once",
+      );
+      assert.equal(
+        deps.unregisterHook.mock.calls[0].arguments[0],
+        "/fake/settings.json",
+        "unregisterHook should be called with settingsPath",
+      );
+    });
+
+    it("should NOT delete config file", async () => {
+      const deps = createDeps({
+        unregisterHook: mock.fn(() => {}),
+        settingsPath: "/fake/settings.json",
+        unlinkSync: mock.fn(() => {}),
+        configPath: "/fake/config.json",
+      });
+
+      await main(["disable"], deps);
+
+      assert.equal(
+        deps.unlinkSync.mock.callCount(),
+        0,
+        "unlinkSync should NOT be called for disable (config is preserved)",
+      );
+    });
+
+    it("should write completion message to stdout mentioning enable", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        unregisterHook: mock.fn(() => {}),
+        settingsPath: "/fake/settings.json",
+        unlinkSync: mock.fn(() => {}),
+        configPath: "/fake/config.json",
+      });
+
+      await main(["disable"], deps);
+
+      const output = stdout.output().toLowerCase();
+      assert.ok(
+        output.includes("enable"),
+        `stdout should mention 'enable' as a hint for re-enabling, got: ${stdout.output()}`,
+      );
+    });
+  });
+
+  // =========================================================================
+  // enable subcommand
+  // =========================================================================
+
+  describe("enable subcommand", () => {
+    it("should call loadConfig and registerHook when topic is configured", async () => {
+      const deps = createDeps({
+        loadConfig: mock.fn(() => ({
+          topic: "cra-abc123",
+          ntfyServer: "https://ntfy.sh",
+          timeout: 120,
+        })),
+        registerHook: mock.fn(() => {}),
+        getHookCommand: mock.fn(() => "node /path/hook.mjs"),
+        settingsPath: "/fake/settings.json",
+      });
+
+      await main(["enable"], deps);
+
+      assert.equal(
+        deps.registerHook.mock.callCount(),
+        1,
+        "registerHook should be called exactly once",
+      );
+      assert.equal(
+        deps.registerHook.mock.calls[0].arguments[0],
+        "/fake/settings.json",
+        "registerHook first arg should be settingsPath",
+      );
+      assert.equal(
+        deps.registerHook.mock.calls[0].arguments[1],
+        "node /path/hook.mjs",
+        "registerHook second arg should be the hook command",
+      );
+    });
+
+    it("should write error to stderr when no topic is configured", async () => {
+      const stdout = createMockWriter();
+      const stderr = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        stderr,
+        loadConfig: mock.fn(() => ({
+          topic: "",
+          ntfyServer: "https://ntfy.sh",
+          timeout: 120,
+        })),
+        registerHook: mock.fn(() => {}),
+        getHookCommand: mock.fn(() => "node /path/hook.mjs"),
+        settingsPath: "/fake/settings.json",
+      });
+
+      await main(["enable"], deps);
+
+      assert.equal(
+        deps.registerHook.mock.callCount(),
+        0,
+        "registerHook should NOT be called when topic is empty",
+      );
+
+      const errOutput = stderr.output();
+      assert.ok(
+        errOutput.length > 0,
+        `stderr should contain an error message when topic is empty, got: ${errOutput}`,
+      );
+    });
+
+    it("should write completion message to stdout on success", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        loadConfig: mock.fn(() => ({
+          topic: "cra-abc123",
+          ntfyServer: "https://ntfy.sh",
+          timeout: 120,
+        })),
+        registerHook: mock.fn(() => {}),
+        getHookCommand: mock.fn(() => "node /path/hook.mjs"),
+        settingsPath: "/fake/settings.json",
+      });
+
+      await main(["enable"], deps);
+
+      const output = stdout.output();
+      assert.ok(
+        output.length > 0,
+        `stdout should contain a completion message, got: ${output}`,
+      );
+    });
+  });
+
+  // =========================================================================
   // --help and --version flags
   // =========================================================================
 
@@ -405,7 +654,7 @@ describe("main", () => {
 
       const output = stdout.output();
       assert.ok(
-        output.includes("0.1.0"),
+        output.includes("0.2.0"),
         `stdout should contain version, got: ${output}`,
       );
     });
@@ -418,8 +667,29 @@ describe("main", () => {
 
       const output = stdout.output();
       assert.ok(
-        output.includes("0.1.0"),
+        output.includes("0.2.0"),
         `stdout should contain version for -v, got: ${output}`,
+      );
+    });
+
+    it("should include enable, disable, and uninstall in help text", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({ stdout });
+
+      await main(["--help"], deps);
+
+      const output = stdout.output();
+      assert.ok(
+        output.includes("enable"),
+        `help text should mention 'enable', got: ${output}`,
+      );
+      assert.ok(
+        output.includes("disable"),
+        `help text should mention 'disable', got: ${output}`,
+      );
+      assert.ok(
+        output.includes("uninstall"),
+        `help text should mention 'uninstall', got: ${output}`,
       );
     });
   });
