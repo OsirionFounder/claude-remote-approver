@@ -1,0 +1,36 @@
+{
+  "name": "claude-remote-approver",
+  "version": "0.1.0",
+  "description": "Approve or deny Claude Code permission prompts remotely from your phone via ntfy.sh",
+  "type": "module",
+  "bin": {
+    "claude-remote-approver": "./bin/cli.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/**/*.test.mjs"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "remote",
+    "approval",
+    "ntfy",
+    "notification",
+    "hook"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eguchiyuuichi/claude-remote-approver.git"
+  }
+}
