@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import qrcode from "qrcode-terminal";
+import { ASK } from "../src/hook.mjs";
 
 // ---------------------------------------------------------------------------
 // main
@@ -87,8 +88,8 @@ export async function main(args, deps) {
       try {
         input = JSON.parse(deps.stdin);
       } catch {
-        const ask = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "ask" } } };
-        deps.stdout.write(JSON.stringify(ask) + "\n");
+        deps.stderr.write("[claude-remote-approver] Invalid hook input. Falling back to CLI.\n");
+        deps.stdout.write(JSON.stringify(ASK) + "\n");
         break;
       }
 
@@ -96,8 +97,8 @@ export async function main(args, deps) {
       try {
         result = await deps.processHook(input, deps);
       } catch {
-        const ask = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "ask" } } };
-        deps.stdout.write(JSON.stringify(ask) + "\n");
+        deps.stderr.write("[claude-remote-approver] Hook processing failed. Falling back to CLI.\n");
+        deps.stdout.write(JSON.stringify(ASK) + "\n");
         break;
       }
 

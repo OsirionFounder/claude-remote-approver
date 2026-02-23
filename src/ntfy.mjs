@@ -91,7 +91,7 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
     if (err?.name === "AbortError") {
       return { timeout: true };
     }
-    console.error("[claude-remote-approver] waitForResponse error:", err);
+    console.error("[claude-remote-approver] waitForResponse error:", err.message ?? err);
     return { error: err };
   }
 }

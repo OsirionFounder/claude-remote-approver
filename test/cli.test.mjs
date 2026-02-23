@@ -452,6 +452,49 @@ describe("main", () => {
       assert.equal(parsed.hookSpecificOutput.decision.behavior, "ask");
       assert.equal(parsed.hookSpecificOutput.hookEventName, "PermissionRequest");
     });
+
+    it("should write fallback message to stderr when stdin contains malformed JSON", async () => {
+      const stdout = createMockWriter();
+      const stderr = createMockWriter();
+      const deps = createDeps({
+        stdin: "this is not valid json{{{",
+        stdout,
+        stderr,
+      });
+
+      await main(["hook"], deps);
+
+      const errOutput = stderr.output();
+      assert.ok(
+        errOutput.includes("[claude-remote-approver]") && errOutput.includes("Invalid hook input"),
+        `stderr should contain prefixed fallback message, got: ${errOutput}`,
+      );
+    });
+
+    it("should write fallback message to stderr when processHook throws an error", async () => {
+      const stdout = createMockWriter();
+      const stderr = createMockWriter();
+      const deps = createDeps({
+        stdin: JSON.stringify({
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "ls" },
+        }),
+        stdout,
+        stderr,
+        processHook: mock.fn(async () => {
+          throw new Error("processHook failed");
+        }),
+      });
+
+      await main(["hook"], deps);
+
+      const errOutput = stderr.output();
+      assert.ok(
+        errOutput.includes("[claude-remote-approver]") && errOutput.includes("Hook processing failed"),
+        `stderr should contain prefixed fallback message, got: ${errOutput}`,
+      );
+    });
   });
 
   // =========================================================================

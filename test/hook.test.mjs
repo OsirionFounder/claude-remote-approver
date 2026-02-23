@@ -367,11 +367,15 @@ describe("processHook", () => {
     try {
       await processHook(sampleInput, deps);
       assert.equal(errorSpy.mock.callCount(), 1);
+      const args = errorSpy.mock.calls[0].arguments;
       assert.ok(
-        errorSpy.mock.calls[0].arguments.some(
-          (arg) => typeof arg === "string" && arg.includes("sendNotification")
-        ),
-        "console.error should mention sendNotification"
+        args[0].includes("[claude-remote-approver]") && args[0].includes("Notification failed after 3 attempts:"),
+        `console.error first arg should have prefix and message, got: ${args[0]}`
+      );
+      assert.equal(args[1], "network error", "should include err.message");
+      assert.ok(
+        args[2].includes("Falling back to CLI"),
+        `should mention fallback, got: ${args[2]}`
       );
     } finally {
       errorSpy.mock.restore();
@@ -388,11 +392,15 @@ describe("processHook", () => {
     try {
       await processHook(sampleInput, deps);
       assert.equal(errorSpy.mock.callCount(), 1);
+      const args = errorSpy.mock.calls[0].arguments;
       assert.ok(
-        errorSpy.mock.calls[0].arguments.some(
-          (arg) => typeof arg === "string" && arg.includes("waitForResponse")
-        ),
-        "console.error should mention waitForResponse"
+        args[0].includes("[claude-remote-approver]") && args[0].includes("Response listener failed:"),
+        `console.error first arg should have prefix and message, got: ${args[0]}`
+      );
+      assert.equal(args[1], "timeout exceeded", "should include err.message");
+      assert.ok(
+        args[2].includes("Falling back to CLI"),
+        `should mention fallback, got: ${args[2]}`
       );
     } finally {
       errorSpy.mock.restore();
@@ -524,6 +532,47 @@ describe("processHook", () => {
         decision: { behavior: "ask" },
       },
     });
+  });
+
+  it("should log timeout message to stderr when waitForResponse returns { timeout: true }", async () => {
+    const deps = createDeps();
+    deps.waitForResponse = mock.fn(async () => ({ timeout: true }));
+    const errorSpy = mock.method(console, "error", () => {});
+
+    try {
+      await processHook(sampleInput, deps);
+      assert.equal(errorSpy.mock.callCount(), 1);
+      const args = errorSpy.mock.calls[0].arguments;
+      assert.ok(
+        args[0].includes("[claude-remote-approver]") && args[0].includes("Timed out waiting for response"),
+        `should log timeout message with prefix, got: ${args[0]}`
+      );
+    } finally {
+      errorSpy.mock.restore();
+    }
+  });
+
+  it("should log error message to stderr when waitForResponse returns { error: Error }", async () => {
+    const deps = createDeps();
+    deps.waitForResponse = mock.fn(async () => ({ error: new Error("SSE failure") }));
+    const errorSpy = mock.method(console, "error", () => {});
+
+    try {
+      await processHook(sampleInput, deps);
+      assert.equal(errorSpy.mock.callCount(), 1);
+      const args = errorSpy.mock.calls[0].arguments;
+      assert.ok(
+        args[0].includes("[claude-remote-approver]") && args[0].includes("Response error:"),
+        `should log error message with prefix, got: ${args[0]}`
+      );
+      assert.equal(args[1], "SSE failure", "should include error message");
+      assert.ok(
+        args[2].includes("Falling back to CLI"),
+        `should mention fallback, got: ${args[2]}`
+      );
+    } finally {
+      errorSpy.mock.restore();
+    }
   });
 
   // ==================== sendWithRetry via processHook ====================
@@ -919,5 +968,115 @@ describe("processAskUserQuestion", () => {
 
     assert.equal(result.hookSpecificOutput.decision.behavior, "allow");
     assert.deepEqual(result.hookSpecificOutput.decision.updatedInput.answers, { "Q1?": "A1", "Q2?": "B2" });
+  });
+
+  it("should log stderr message when waitForResponse throws", async () => {
+    const input = {
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [{
+          question: "Which?",
+          header: "Q",
+          options: [{ label: "A", description: "a" }],
+          multiSelect: false,
+        }],
+      },
+    };
+    const deps = {
+      loadConfig: mock.fn(() => ({
+        topic: "test-topic",
+        ntfyServer: "https://ntfy.sh",
+        timeout: 120,
+      })),
+      sendNotification: mock.fn(async () => ({ ok: true })),
+      waitForResponse: mock.fn(async () => { throw new Error("connection lost"); }),
+    };
+    const errorSpy = mock.method(console, "error", () => {});
+
+    try {
+      await processAskUserQuestion(input, deps);
+      assert.equal(errorSpy.mock.callCount(), 1);
+      const args = errorSpy.mock.calls[0].arguments;
+      assert.ok(
+        args[0].includes("[claude-remote-approver]") && args[0].includes("Response listener failed:"),
+        `should have prefix and message, got: ${args[0]}`
+      );
+      assert.equal(args[1], "connection lost", "should include err.message");
+    } finally {
+      errorSpy.mock.restore();
+    }
+  });
+
+  it("should log stderr message when no answer received (timeout/error)", async () => {
+    const input = {
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [{
+          question: "Which?",
+          header: "Q",
+          options: [{ label: "A", description: "a" }],
+          multiSelect: false,
+        }],
+      },
+    };
+    const deps = {
+      loadConfig: mock.fn(() => ({
+        topic: "test-topic",
+        ntfyServer: "https://ntfy.sh",
+        timeout: 120,
+      })),
+      sendNotification: mock.fn(async () => ({ ok: true })),
+      waitForResponse: mock.fn(async () => ({ timeout: true })),
+    };
+    const errorSpy = mock.method(console, "error", () => {});
+
+    try {
+      await processAskUserQuestion(input, deps);
+      assert.equal(errorSpy.mock.callCount(), 1);
+      const args = errorSpy.mock.calls[0].arguments;
+      assert.ok(
+        args[0].includes("[claude-remote-approver]") && args[0].includes("No answer received"),
+        `should log no answer message with prefix, got: ${args[0]}`
+      );
+    } finally {
+      errorSpy.mock.restore();
+    }
+  });
+
+  it("should log stderr message when sendNotification fails after retries", async () => {
+    const input = {
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [{
+          question: "Which?",
+          header: "Q",
+          options: [{ label: "A", description: "a" }],
+          multiSelect: false,
+        }],
+      },
+    };
+    const deps = {
+      loadConfig: mock.fn(() => ({
+        topic: "test-topic",
+        ntfyServer: "https://ntfy.sh",
+        timeout: 120,
+      })),
+      sendNotification: mock.fn(async () => { throw new Error("rate limited"); }),
+      waitForResponse: mock.fn(async () => ({ answer: "A" })),
+    };
+    const errorSpy = mock.method(console, "error", () => {});
+
+    try {
+      await processAskUserQuestion(input, deps);
+      assert.equal(errorSpy.mock.callCount(), 1);
+      const args = errorSpy.mock.calls[0].arguments;
+      assert.ok(
+        args[0].includes("[claude-remote-approver]") && args[0].includes("Notification failed after 3 attempts:"),
+        `should have prefix and notification failed message, got: ${args[0]}`
+      );
+      assert.equal(args[1], "rate limited", "should include err.message");
+    } finally {
+      errorSpy.mock.restore();
+    }
   });
 });

@@ -3,7 +3,7 @@
 import crypto from "node:crypto";
 import { DEFAULT_CONFIG } from "./config.mjs";
 
-const ASK = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "ask" }) }) });
+export const ASK = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "ask" }) }) });
 const DENY = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "deny" }) }) });
 const MAX_RETRIES = 3;
 
@@ -44,7 +44,7 @@ export async function sendWithRetry(sendFn, params) {
       return await sendFn(params);
     } catch (err) {
       if (i === MAX_RETRIES - 1) {
-        console.error("sendNotification failed:", err);
+        console.error(`[claude-remote-approver] Notification failed after ${MAX_RETRIES} attempts:`, err.message, "— Falling back to CLI.");
         return null;
       }
     }
@@ -139,13 +139,14 @@ export async function processAskUserQuestion(input, deps) {
         timeout: config.timeout * 1000,
       });
     } catch (err) {
-      console.error("waitForResponse failed:", err);
+      console.error("[claude-remote-approver] Response listener failed:", err.message, "— Falling back to CLI.");
       return ASK;
     }
 
     if (response.answer) {
       answers[q.question] = response.answer;
     } else {
+      console.error("[claude-remote-approver] No answer received. Falling back to CLI.");
       return ASK;
     }
   }
@@ -211,11 +212,18 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
       timeout,
     });
   } catch (err) {
-    console.error("waitForResponse failed:", err);
+    console.error("[claude-remote-approver] Response listener failed:", err.message, "— Falling back to CLI.");
     return ASK;
   }
 
-  if (response.timeout || response.error) return ASK;
+  if (response.timeout) {
+    console.error("[claude-remote-approver] Timed out waiting for response. Falling back to CLI.");
+    return ASK;
+  }
+  if (response.error) {
+    console.error("[claude-remote-approver] Response error:", response.error.message, "— Falling back to CLI.");
+    return ASK;
+  }
   if (response.approved === false) return DENY;
   return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } };
 }
