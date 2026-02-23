@@ -11,16 +11,18 @@ export const RETRY_DELAY_MS = 1000;
 export const _internal = { delay: ms => new Promise(r => setTimeout(r, ms)) };
 
 /**
- * Build ntfy action buttons for Approve / Deny.
+ * Build ntfy action buttons for Approve / Deny (and optionally Always Allow).
  *
  * @param {string} server - ntfy server URL
  * @param {string} topic - ntfy topic
  * @param {string} requestId - Unique request identifier
- * @returns {Array<object>} Array of 2 action objects
+ * @param {object} [options] - Optional settings
+ * @param {string[]} [options.permissionSuggestions] - When non-empty, adds an "Always Allow" button
+ * @returns {Array<object>} Array of action objects
  */
-export function buildActions(server, topic, requestId) {
+export function buildActions(server, topic, requestId, { permissionSuggestions } = {}) {
   const url = `${server}/${topic}-response`;
-  return [
+  const actions = [
     {
       action: "http",
       label: "Approve",
@@ -36,6 +38,16 @@ export function buildActions(server, topic, requestId) {
       method: "POST",
     },
   ];
+  if (permissionSuggestions?.length > 0) {
+    actions.splice(1, 0, {
+      action: "http",
+      label: "Always Allow",
+      url,
+      body: JSON.stringify({ requestId, approved: true, alwaysAllow: true }),
+      method: "POST",
+    });
+  }
+  return actions;
 }
 
 /**
@@ -194,7 +206,9 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
 
   const requestId = crypto.randomUUID();
   const { title, message } = formatToolInfo(input);
-  const actions = buildActions(config.ntfyServer, config.topic, requestId);
+  const actions = buildActions(config.ntfyServer, config.topic, requestId, {
+    permissionSuggestions: input.permission_suggestions,
+  });
 
   const sent = await sendWithRetry(sendNotification, {
     server: config.ntfyServer,
@@ -230,5 +244,9 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
     return ASK;
   }
   if (response.approved === false) return DENY;
-  return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } };
+  const decision = { behavior: "allow" };
+  if (response.alwaysAllow === true && input.permission_suggestions?.length > 0) {
+    decision.updatedPermissions = input.permission_suggestions;
+  }
+  return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision } };
 }

@@ -21,7 +21,7 @@ cli.mjs hook
   │
   ├──POST──▶ ntfy.sh/<topic>          ──push──▶  Phone (ntfy app)
   │                                                 │
-  │                                           Approve / Deny tap
+  │                                     Approve / Always Allow / Deny tap
   │                                                 │
   └──SSE───▶ ntfy.sh/<topic>-response  ◀──POST──┘
   │
@@ -31,7 +31,7 @@ Claude Code continues or stops
 ```
 
 1. Claude Code invokes the hook, piping the tool request as JSON to stdin.
-2. `cli.mjs hook` sends a notification to your ntfy topic with **Approve** and **Deny** action buttons.
+2. `cli.mjs hook` sends a notification to your ntfy topic with **Approve**, **Always Allow**, and **Deny** action buttons.
 3. The hook subscribes to a response topic (`<topic>-response`) via server-sent events.
 4. When you tap a button on your phone, ntfy.sh publishes your decision to the response topic.
 5. The hook reads the decision and writes `{"behavior":"allow"}` or `{"behavior":"deny"}` to stdout. If the notification fails or times out, the hook returns `{"behavior":"ask"}` so Claude Code falls back to the CLI prompt.
@@ -40,6 +40,16 @@ Claude Code continues or stops
 ### AskUserQuestion support
 
 When Claude Code calls the `AskUserQuestion` tool, the hook sends the question to your phone as a notification. Each option appears as an action button you can tap. If the question has more than 3 options, they are split across multiple notifications. If no response is received before the timeout, the hook falls back to the CLI prompt so you can answer at your terminal.
+
+### Always Allow
+
+When Claude Code sends a `permission_suggestions` field with the hook request (indicating the tool can be auto-approved in future), the notification shows three buttons: **Approve**, **Always Allow**, and **Deny**.
+
+- **Approve** -- Allow this one request.
+- **Always Allow** -- Allow this request and tell Claude Code to auto-approve this tool in future sessions. Claude Code adds the permission rule to its settings so it won't ask again.
+- **Deny** -- Reject this request.
+
+If the hook request does not include `permission_suggestions`, only the standard **Approve** and **Deny** buttons are shown.
 
 ## Quick Start
 

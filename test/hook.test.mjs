@@ -108,6 +108,48 @@ describe("buildActions", () => {
       "https://custom.ntfy.example.com/cra-abc123-response"
     );
   });
+
+  // ==================== Always Allow ====================
+
+  it("should return 3 actions when permissionSuggestions is provided", () => {
+    const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa1", {
+      permissionSuggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
+    });
+    assert.equal(actions.length, 3);
+  });
+
+  it("should place Always Allow between Approve and Deny", () => {
+    const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa2", {
+      permissionSuggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
+    });
+    assert.equal(actions[0].label, "Approve");
+    assert.equal(actions[1].label, "Always Allow");
+    assert.equal(actions[2].label, "Deny");
+  });
+
+  it("should include alwaysAllow: true in Always Allow button body", () => {
+    const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa3", {
+      permissionSuggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
+    });
+    const body = JSON.parse(actions[1].body);
+    assert.equal(body.requestId, "req-aa3");
+    assert.equal(body.approved, true);
+    assert.equal(body.alwaysAllow, true);
+  });
+
+  it("should return 2 actions when permissionSuggestions is empty", () => {
+    const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa4", {
+      permissionSuggestions: [],
+    });
+    assert.equal(actions.length, 2);
+    assert.equal(actions[0].label, "Approve");
+    assert.equal(actions[1].label, "Deny");
+  });
+
+  it("should return 2 actions when no options object is provided", () => {
+    const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa5");
+    assert.equal(actions.length, 2);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -630,6 +672,101 @@ describe("processHook", () => {
     assert.equal(result.hookSpecificOutput.decision.behavior, "allow");
     assert.ok(result.hookSpecificOutput.decision.updatedInput, "Should have updatedInput from processAskUserQuestion");
     assert.deepEqual(result.hookSpecificOutput.decision.updatedInput.answers, { "Which option?": "A" });
+  });
+
+  // ==================== Always Allow integration ====================
+
+  it("should pass permission_suggestions to buildActions when present in input", async () => {
+    const inputWithSuggestions = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+      permission_suggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
+    };
+    const deps = createDeps();
+    await processHook(inputWithSuggestions, deps);
+    const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
+    assert.equal(callArgs.actions.length, 3, "Should have 3 actions (Approve, Always Allow, Deny)");
+    assert.equal(callArgs.actions[1].label, "Always Allow");
+  });
+
+  it("should return updatedPermissions when alwaysAllow is true and permission_suggestions exist", async () => {
+    const inputWithSuggestions = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+      permission_suggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
+    };
+    const deps = createDeps({ waitResult: { approved: true, alwaysAllow: true } });
+    const result = await processHook(inputWithSuggestions, deps);
+    assert.deepEqual(result, {
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: {
+          behavior: "allow",
+          updatedPermissions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
+        },
+      },
+    });
+  });
+
+  it("should NOT include updatedPermissions when alwaysAllow is false", async () => {
+    const inputWithSuggestions = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+      permission_suggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
+    };
+    const deps = createDeps({ waitResult: { approved: true, alwaysAllow: false } });
+    const result = await processHook(inputWithSuggestions, deps);
+    assert.deepEqual(result, {
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: { behavior: "allow" },
+      },
+    });
+  });
+
+  it("should NOT include updatedPermissions when alwaysAllow is true but permission_suggestions is absent", async () => {
+    const deps = createDeps({ waitResult: { approved: true, alwaysAllow: true } });
+    // sampleInput does NOT have permission_suggestions
+    const result = await processHook(sampleInput, deps);
+    assert.deepEqual(result, {
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: { behavior: "allow" },
+      },
+    });
+  });
+
+  it("should return 2 actions when permissionSuggestions is null in input", async () => {
+    const inputWithNull = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+      permission_suggestions: null,
+    };
+    const deps = createDeps();
+    await processHook(inputWithNull, deps);
+    const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
+    assert.equal(callArgs.actions.length, 2, "Should have 2 actions when permissionSuggestions is null");
+  });
+
+  it("should return deny when approved is false even if alwaysAllow is true", async () => {
+    const inputWithSuggestions = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+      permission_suggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
+    };
+    const deps = createDeps({ waitResult: { approved: false, alwaysAllow: true } });
+    const result = await processHook(inputWithSuggestions, deps);
+    assert.deepEqual(result, {
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: { behavior: "deny" },
+      },
+    });
   });
 });
 

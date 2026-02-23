@@ -73,7 +73,7 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
               if (typeof parsed.answer === 'string') {
                 return { answer: parsed.answer };
               }
-              return { approved: parsed.approved };
+              return { approved: parsed.approved, alwaysAllow: parsed.alwaysAllow === true };
             }
           } catch {
             // skip non-JSON lines

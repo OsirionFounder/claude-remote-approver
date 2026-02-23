@@ -337,7 +337,7 @@ describe("waitForResponse", () => {
       timeout: 5000,
     });
 
-    assert.deepEqual(result, { approved: true });
+    assert.deepEqual(result, { approved: true, alwaysAllow: false });
   });
 
   it("should return { approved: false } when a matching requestId with approved:false is received", async () => {
@@ -357,7 +357,7 @@ describe("waitForResponse", () => {
       timeout: 5000,
     });
 
-    assert.deepEqual(result, { approved: false });
+    assert.deepEqual(result, { approved: false, alwaysAllow: false });
   });
 
   it("should filter messages by requestId and ignore non-matching ones", async () => {
@@ -382,7 +382,7 @@ describe("waitForResponse", () => {
     });
 
     // Should skip the first event (wrong requestId) and return the second
-    assert.deepEqual(result, { approved: false });
+    assert.deepEqual(result, { approved: false, alwaysAllow: false });
   });
 
   it("should return { timeout: true } on timeout", async () => {
@@ -462,7 +462,7 @@ describe("waitForResponse", () => {
       timeout: 5000,
     });
 
-    assert.deepEqual(result, { approved: true });
+    assert.deepEqual(result, { approved: true, alwaysAllow: false });
     assert.ok(capturedSignal, "fetch should have been called with a signal");
     assert.equal(
       capturedSignal.aborted,
@@ -527,6 +527,46 @@ describe("waitForResponse", () => {
     });
 
     assert.deepEqual(result, { answer: "Option B" });
+  });
+
+  it("should return { approved: true, alwaysAllow: true } when response includes alwaysAllow: true", async () => {
+    const events = [
+      {
+        event: "message",
+        message: JSON.stringify({ requestId: "req-aa1", approved: true, alwaysAllow: true }),
+      },
+    ];
+    const mockFetch = createStreamingMockFetch(events);
+    globalThis.fetch = mockFetch;
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-aa1",
+      timeout: 5000,
+    });
+
+    assert.deepEqual(result, { approved: true, alwaysAllow: true });
+  });
+
+  it("should return { approved: true, alwaysAllow: false } when response does not include alwaysAllow", async () => {
+    const events = [
+      {
+        event: "message",
+        message: JSON.stringify({ requestId: "req-aa2", approved: true }),
+      },
+    ];
+    const mockFetch = createStreamingMockFetch(events);
+    globalThis.fetch = mockFetch;
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-aa2",
+      timeout: 5000,
+    });
+
+    assert.deepEqual(result, { approved: true, alwaysAllow: false });
   });
 });
 
