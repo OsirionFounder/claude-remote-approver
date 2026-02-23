@@ -87,8 +87,8 @@ export async function main(args, deps) {
       try {
         input = JSON.parse(deps.stdin);
       } catch {
-        const deny = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
-        deps.stdout.write(JSON.stringify(deny) + "\n");
+        const ask = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "ask" } } };
+        deps.stdout.write(JSON.stringify(ask) + "\n");
         break;
       }
 
@@ -96,8 +96,8 @@ export async function main(args, deps) {
       try {
         result = await deps.processHook(input, deps);
       } catch {
-        const deny = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
-        deps.stdout.write(JSON.stringify(deny) + "\n");
+        const ask = { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "ask" } } };
+        deps.stdout.write(JSON.stringify(ask) + "\n");
         break;
       }
 

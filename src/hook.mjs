@@ -3,6 +3,10 @@
 import crypto from "node:crypto";
 import { DEFAULT_CONFIG } from "./config.mjs";
 
+const ASK = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "ask" }) }) });
+const DENY = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "deny" }) }) });
+const MAX_RETRIES = 3;
+
 /**
  * Build ntfy action buttons for Approve / Deny.
  *
@@ -32,6 +36,135 @@ export function buildActions(server, topic, requestId) {
 }
 
 /**
+ * Send with retry, returning null on exhausted retries.
+ */
+export async function sendWithRetry(sendFn, params) {
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      return await sendFn(params);
+    } catch (err) {
+      if (i === MAX_RETRIES - 1) {
+        console.error("sendNotification failed:", err);
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Check if the input is an AskUserQuestion tool call with questions.
+ */
+export function isAskUserQuestion(input) {
+  return (
+    input?.tool_name === "AskUserQuestion" &&
+    Array.isArray(input?.tool_input?.questions) &&
+    input.tool_input.questions.length > 0
+  );
+}
+
+/**
+ * Build ntfy action buttons for question options.
+ */
+export function buildQuestionActions(server, topic, requestId, options) {
+  const url = `${server}/${topic}-response`;
+  return options.map((opt) => ({
+    action: "http",
+    label: opt.label,
+    url,
+    body: JSON.stringify({ requestId, answer: opt.label }),
+    method: "POST",
+  }));
+}
+
+/**
+ * Build a human-readable message for a question with options.
+ */
+export function buildQuestionMessage(question, options, opts = {}) {
+  const { multiSelect, batchInfo } = opts;
+  let msg = question;
+  if (batchInfo) msg += ` ${batchInfo}`;
+  if (multiSelect) msg += "\n(multiple selections allowed)";
+  msg += "\n\n";
+  for (const opt of options) {
+    msg += `• ${opt.label}: ${opt.description}\n`;
+  }
+  return msg.trimEnd();
+}
+
+/**
+ * Process an AskUserQuestion hook request.
+ */
+export async function processAskUserQuestion(input, deps) {
+  const config = deps.loadConfig();
+  if (!config.topic) return ASK;
+
+  const questions = input.tool_input.questions;
+  const answers = {};
+
+  for (const q of questions) {
+    const requestId = crypto.randomUUID();
+    const options = q.options;
+
+    const MAX_BUTTONS = 3;
+    const batches = [];
+    for (let j = 0; j < options.length; j += MAX_BUTTONS) {
+      batches.push(options.slice(j, j + MAX_BUTTONS));
+    }
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      const batchInfo = batches.length > 1 ? `(${i + 1}/${batches.length})` : undefined;
+      const actions = buildQuestionActions(config.ntfyServer, config.topic, requestId, batch);
+      const message = buildQuestionMessage(q.question, batch, { multiSelect: q.multiSelect, batchInfo });
+
+      const sent = await sendWithRetry(deps.sendNotification, {
+        server: config.ntfyServer,
+        topic: config.topic,
+        title: `Claude Code: ${q.header || "Question"}`,
+        message,
+        actions,
+        requestId,
+      });
+      if (!sent) return ASK;
+    }
+
+    // AskUserQuestion uses standard timeout (not planTimeout)
+    let response;
+    try {
+      response = await deps.waitForResponse({
+        server: config.ntfyServer,
+        topic: config.topic,
+        requestId,
+        timeout: config.timeout * 1000,
+      });
+    } catch (err) {
+      console.error("waitForResponse failed:", err);
+      return ASK;
+    }
+
+    if (response.answer) {
+      answers[q.question] = response.answer;
+    } else {
+      return ASK;
+    }
+  }
+
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: {
+        behavior: "allow",
+        updatedInput: {
+          questions: input.tool_input.questions,
+          answers,
+        },
+      },
+    },
+  };
+}
+
+/**
  * Process a Claude Code hook request.
  *
  * @param {object} input - The hook input payload
@@ -46,26 +179,26 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
   const config = loadConfig();
 
   if (!config.topic) {
-    return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
+    return ASK;
+  }
+
+  if (isAskUserQuestion(input)) {
+    return processAskUserQuestion(input, { loadConfig, sendNotification, waitForResponse });
   }
 
   const requestId = crypto.randomUUID();
   const { title, message } = formatToolInfo(input);
   const actions = buildActions(config.ntfyServer, config.topic, requestId);
 
-  try {
-    await sendNotification({
-      server: config.ntfyServer,
-      topic: config.topic,
-      title,
-      message,
-      actions,
-      requestId,
-    });
-  } catch (err) {
-    console.error("sendNotification failed:", err);
-    return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
-  }
+  const sent = await sendWithRetry(sendNotification, {
+    server: config.ntfyServer,
+    topic: config.topic,
+    title,
+    message,
+    actions,
+    requestId,
+  });
+  if (!sent) return ASK;
 
   let response;
   try {
@@ -79,9 +212,10 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
     });
   } catch (err) {
     console.error("waitForResponse failed:", err);
-    return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
+    return ASK;
   }
 
-  const behavior = response.approved ? "allow" : "deny";
-  return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior } } };
+  if (response.timeout || response.error) return ASK;
+  if (response.approved === false) return DENY;
+  return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } };
 }

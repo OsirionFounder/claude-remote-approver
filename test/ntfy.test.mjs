@@ -385,7 +385,7 @@ describe("waitForResponse", () => {
     assert.deepEqual(result, { approved: false });
   });
 
-  it("should return { approved: false } on timeout", async () => {
+  it("should return { timeout: true } on timeout", async () => {
     // Stream that never sends a matching event — just stays open
     const neverMatchStream = new ReadableStream({
       start() {
@@ -406,7 +406,7 @@ describe("waitForResponse", () => {
       timeout: 200, // Very short timeout for fast test
     });
 
-    assert.deepEqual(result, { approved: false });
+    assert.deepEqual(result, { timeout: true });
   });
 
   it("should connect to {server}/{topic}-response/json endpoint", async () => {
@@ -469,6 +469,64 @@ describe("waitForResponse", () => {
       true,
       "AbortController should be aborted after matching response to close SSE connection"
     );
+  });
+
+  it("should return { answer: string } when matching requestId has an answer field", async () => {
+    const events = [
+      {
+        event: "message",
+        message: JSON.stringify({ requestId: "req-ans", answer: "Option A" }),
+      },
+    ];
+    const mockFetch = createStreamingMockFetch(events);
+    globalThis.fetch = mockFetch;
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-ans",
+      timeout: 5000,
+    });
+
+    assert.deepEqual(result, { answer: "Option A" });
+  });
+
+  it("should return { error: Error } on network error", async () => {
+    const networkError = new Error("ECONNREFUSED");
+    const mockFetch = mock.fn(async () => {
+      throw networkError;
+    });
+    globalThis.fetch = mockFetch;
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-err",
+      timeout: 5000,
+    });
+
+    assert.ok(result.error instanceof Error, "should have error property");
+    assert.equal(result.error.message, "ECONNREFUSED");
+  });
+
+  it("should prioritize answer over approved when both are present", async () => {
+    const events = [
+      {
+        event: "message",
+        message: JSON.stringify({ requestId: "req-both", approved: true, answer: "Option B" }),
+      },
+    ];
+    const mockFetch = createStreamingMockFetch(events);
+    globalThis.fetch = mockFetch;
+
+    const result = await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-both",
+      timeout: 5000,
+    });
+
+    assert.deepEqual(result, { answer: "Option B" });
   });
 });
 

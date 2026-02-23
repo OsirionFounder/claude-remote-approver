@@ -409,7 +409,7 @@ describe("main", () => {
       assert.equal(parsed.hookSpecificOutput.decision.behavior, "deny");
     });
 
-    it("should output deny JSON when stdin contains malformed JSON", async () => {
+    it("should output ask JSON when stdin contains malformed JSON", async () => {
       const stdout = createMockWriter();
       const deps = createDeps({
         stdin: "this is not valid json{{{",
@@ -421,7 +421,7 @@ describe("main", () => {
       const output = stdout.output();
       assert.ok(output.endsWith("\n"), "hook output should end with a newline");
       const parsed = JSON.parse(output);
-      assert.equal(parsed.hookSpecificOutput.decision.behavior, "deny");
+      assert.equal(parsed.hookSpecificOutput.decision.behavior, "ask");
       assert.equal(parsed.hookSpecificOutput.hookEventName, "PermissionRequest");
       assert.equal(
         deps.processHook.mock.callCount(),
@@ -430,7 +430,7 @@ describe("main", () => {
       );
     });
 
-    it("should output deny JSON when processHook throws an error", async () => {
+    it("should output ask JSON when processHook throws an error", async () => {
       const stdout = createMockWriter();
       const deps = createDeps({
         stdin: JSON.stringify({
@@ -449,7 +449,7 @@ describe("main", () => {
       const output = stdout.output();
       assert.ok(output.endsWith("\n"), "hook output should end with a newline");
       const parsed = JSON.parse(output);
-      assert.equal(parsed.hookSpecificOutput.decision.behavior, "deny");
+      assert.equal(parsed.hookSpecificOutput.decision.behavior, "ask");
       assert.equal(parsed.hookSpecificOutput.hookEventName, "PermissionRequest");
     });
   });

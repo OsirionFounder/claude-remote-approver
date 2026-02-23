@@ -27,7 +27,7 @@ export async function sendNotification({ server, topic, title, message, actions,
  * Subscribe to the response topic via SSE and wait for a matching requestId.
  *
  * @param {{ server: string, topic: string, requestId: string, timeout: number }} params
- * @returns {Promise<{ approved: boolean }>}
+ * @returns {Promise<{ approved: boolean } | { timeout: true } | { error: Error } | { answer: string }>}
  */
 export async function waitForResponse({ server, topic, requestId, timeout }) {
   const baseUrl = server.replace(/\/+$/, '');
@@ -70,6 +70,9 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
               clearTimeout(timer);
               controller.signal.removeEventListener('abort', onAbort);
               controller.abort();
+              if (typeof parsed.answer === 'string') {
+                return { answer: parsed.answer };
+              }
               return { approved: parsed.approved };
             }
           } catch {
@@ -82,13 +85,14 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
     }
 
     clearTimeout(timer);
-    return { approved: false };
+    return { timeout: true };
   } catch (err) {
     if (timer !== undefined) clearTimeout(timer);
-    if (err?.name !== "AbortError") {
-      console.error("[claude-remote-approver] waitForResponse error:", err);
+    if (err?.name === "AbortError") {
+      return { timeout: true };
     }
-    return { approved: false };
+    console.error("[claude-remote-approver] waitForResponse error:", err);
+    return { error: err };
   }
 }
 
