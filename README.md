@@ -229,7 +229,7 @@ The public ntfy.sh server is convenient but means your permission request detail
 
 ### Timeout behavior
 
-If no response is received within the configured timeout (default: 120 seconds), the hook falls back to the **CLI prompt** (`ask`), so you can still respond at your terminal. An error message prefixed with `[claude-remote-approver]` is printed to stderr explaining why the fallback occurred.
+If no response is received within the configured timeout (default: 120 seconds), the hook falls back to the **CLI prompt** (`ask`), so you can still respond at your terminal.
 
 ## Disclaimer
 
