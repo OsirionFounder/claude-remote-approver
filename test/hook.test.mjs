@@ -124,6 +124,7 @@ describe("processHook", () => {
       topic: "test-topic",
       ntfyServer: "https://ntfy.sh",
       timeout: 120,
+      planTimeout: 300,
       autoApprove: [],
       autoDeny: [],
     };
@@ -288,6 +289,7 @@ describe("processHook", () => {
       topic: "test-topic",
       ntfyServer: "https://ntfy.sh",
       timeout: 300,
+      planTimeout: 300,
       autoApprove: [],
       autoDeny: [],
     };
@@ -308,6 +310,7 @@ describe("processHook", () => {
       topic: "test-topic",
       ntfyServer: "https://custom.ntfy.example.com",
       timeout: 120,
+      planTimeout: 300,
       autoApprove: [],
       autoDeny: [],
     };
@@ -351,6 +354,122 @@ describe("processHook", () => {
         decision: { behavior: "deny" },
       },
     });
+  });
+
+  it("should log error to console.error when sendNotification throws", async () => {
+    const deps = createDeps();
+    deps.sendNotification = mock.fn(async () => {
+      throw new Error("network error");
+    });
+    const errorSpy = mock.method(console, "error", () => {});
+
+    try {
+      await processHook(sampleInput, deps);
+      assert.equal(errorSpy.mock.callCount(), 1);
+      assert.ok(
+        errorSpy.mock.calls[0].arguments.some(
+          (arg) => typeof arg === "string" && arg.includes("sendNotification")
+        ),
+        "console.error should mention sendNotification"
+      );
+    } finally {
+      errorSpy.mock.restore();
+    }
+  });
+
+  it("should log error to console.error when waitForResponse throws", async () => {
+    const deps = createDeps();
+    deps.waitForResponse = mock.fn(async () => {
+      throw new Error("timeout exceeded");
+    });
+    const errorSpy = mock.method(console, "error", () => {});
+
+    try {
+      await processHook(sampleInput, deps);
+      assert.equal(errorSpy.mock.callCount(), 1);
+      assert.ok(
+        errorSpy.mock.calls[0].arguments.some(
+          (arg) => typeof arg === "string" && arg.includes("waitForResponse")
+        ),
+        "console.error should mention waitForResponse"
+      );
+    } finally {
+      errorSpy.mock.restore();
+    }
+  });
+
+  // ==================== ExitPlanMode timeout ====================
+
+  it("should use planTimeout for ExitPlanMode tool", async () => {
+    const customConfig = {
+      topic: "test-topic",
+      ntfyServer: "https://ntfy.sh",
+      timeout: 120,
+      planTimeout: 300,
+      autoApprove: [],
+      autoDeny: [],
+    };
+    const deps = createDeps({ config: customConfig });
+    const exitPlanInput = {
+      hook_event_name: "PreToolUse",
+      tool_name: "ExitPlanMode",
+      tool_input: {},
+    };
+
+    await processHook(exitPlanInput, deps);
+
+    const callArgs = deps.waitForResponse.mock.calls[0].arguments[0];
+    assert.equal(
+      callArgs.timeout,
+      300 * 1000,
+      `ExitPlanMode timeout should be planTimeout * 1000 (300000), got: ${callArgs.timeout}`
+    );
+  });
+
+  it("should use regular timeout for non-ExitPlanMode tools", async () => {
+    const customConfig = {
+      topic: "test-topic",
+      ntfyServer: "https://ntfy.sh",
+      timeout: 120,
+      planTimeout: 300,
+      autoApprove: [],
+      autoDeny: [],
+    };
+    const deps = createDeps({ config: customConfig });
+
+    await processHook(sampleInput, deps);
+
+    const callArgs = deps.waitForResponse.mock.calls[0].arguments[0];
+    assert.equal(
+      callArgs.timeout,
+      120 * 1000,
+      `Regular tool timeout should be timeout * 1000 (120000), got: ${callArgs.timeout}`
+    );
+  });
+
+  it("should fall back to 300s when planTimeout is not set in config for ExitPlanMode", async () => {
+    const configWithoutPlanTimeout = {
+      topic: "test-topic",
+      ntfyServer: "https://ntfy.sh",
+      timeout: 120,
+      autoApprove: [],
+      autoDeny: [],
+    };
+    const deps = createDeps({ config: configWithoutPlanTimeout });
+    const exitPlanInput = {
+      hook_event_name: "PreToolUse",
+      tool_name: "ExitPlanMode",
+      tool_input: {},
+    };
+
+    await processHook(exitPlanInput, deps);
+
+    const callArgs = deps.waitForResponse.mock.calls[0].arguments[0];
+    assert.equal(
+      callArgs.timeout,
+      300 * 1000,
+      `ExitPlanMode should fall back to 300s (300000), got: ${callArgs.timeout}`
+    );
   });
 
   // ==================== formatToolInfo ====================

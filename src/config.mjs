@@ -9,6 +9,7 @@ export const DEFAULT_CONFIG = {
   topic: "",
   ntfyServer: "https://ntfy.sh",
   timeout: 120,
+  planTimeout: 300,
   // autoApprove/autoDeny are reserved for future use and not yet implemented
   autoApprove: [],
   autoDeny: [],
@@ -21,7 +22,8 @@ export function loadConfig(configPath = CONFIG_PATH) {
     const config = { ...DEFAULT_CONFIG, ...fileConfig };
     if (typeof config.topic !== "string") config.topic = DEFAULT_CONFIG.topic;
     if (typeof config.ntfyServer !== "string") config.ntfyServer = DEFAULT_CONFIG.ntfyServer;
-    if (typeof config.timeout !== "number" || config.timeout <= 0) config.timeout = DEFAULT_CONFIG.timeout;
+    if (!Number.isFinite(config.timeout) || config.timeout <= 0) config.timeout = DEFAULT_CONFIG.timeout;
+    if (!Number.isFinite(config.planTimeout) || config.planTimeout <= 0) config.planTimeout = DEFAULT_CONFIG.planTimeout;
     if (!Array.isArray(config.autoApprove)) config.autoApprove = DEFAULT_CONFIG.autoApprove;
     if (!Array.isArray(config.autoDeny)) config.autoDeny = DEFAULT_CONFIG.autoDeny;
     return config;

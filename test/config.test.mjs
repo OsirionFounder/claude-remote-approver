@@ -76,6 +76,10 @@ describe("DEFAULT_CONFIG", () => {
     assert.ok(Array.isArray(DEFAULT_CONFIG.autoDeny), "autoDeny should be an array");
     assert.equal(DEFAULT_CONFIG.autoDeny.length, 0);
   });
+
+  it("should have planTimeout as 300", () => {
+    assert.equal(DEFAULT_CONFIG.planTimeout, 300);
+  });
 });
 
 // ==================== loadConfig ====================
@@ -107,6 +111,7 @@ describe("loadConfig", () => {
       topic: "",
       ntfyServer: "https://ntfy.sh",
       timeout: 120,
+      planTimeout: 300,
       autoApprove: [],
       autoDeny: [],
     });
@@ -133,6 +138,7 @@ describe("loadConfig", () => {
       topic: "full-topic",
       ntfyServer: "https://custom.ntfy.example.com",
       timeout: 300,
+      planTimeout: 600,
       autoApprove: ["Bash(*)"],
       autoDeny: ["mcp__*"],
     };
@@ -180,6 +186,28 @@ describe("loadConfig", () => {
     fs.writeFileSync(tmpConfigPath, JSON.stringify({ autoDeny: true }));
     const config = loadConfig(tmpConfigPath);
     assert.deepEqual(config.autoDeny, DEFAULT_CONFIG.autoDeny);
+  });
+
+  it("should fall back to default planTimeout when planTimeout is not a positive number", () => {
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ planTimeout: "slow" }));
+    const config = loadConfig(tmpConfigPath);
+    assert.equal(config.planTimeout, DEFAULT_CONFIG.planTimeout);
+  });
+
+  it("should fall back to default planTimeout when planTimeout is zero or negative", () => {
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ planTimeout: 0 }));
+    let config = loadConfig(tmpConfigPath);
+    assert.equal(config.planTimeout, DEFAULT_CONFIG.planTimeout);
+
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ planTimeout: -5 }));
+    config = loadConfig(tmpConfigPath);
+    assert.equal(config.planTimeout, DEFAULT_CONFIG.planTimeout);
+  });
+
+  it("should accept valid planTimeout from config file", () => {
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ planTimeout: 600 }));
+    const config = loadConfig(tmpConfigPath);
+    assert.equal(config.planTimeout, 600);
   });
 });
 
@@ -233,6 +261,7 @@ describe("saveConfig", () => {
       topic: "roundtrip",
       ntfyServer: "https://custom.example.com",
       timeout: 90,
+      planTimeout: 180,
       autoApprove: ["Read"],
       autoDeny: ["Bash(rm*)"],
     };

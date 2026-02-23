@@ -1,6 +1,7 @@
 // src/hook.mjs
 
 import crypto from "node:crypto";
+import { DEFAULT_CONFIG } from "./config.mjs";
 
 /**
  * Build ntfy action buttons for Approve / Deny.
@@ -62,18 +63,22 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
       requestId,
     });
   } catch (err) {
+    console.error("sendNotification failed:", err);
     return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
   }
 
   let response;
   try {
+    const isPlanReview = input.tool_name === "ExitPlanMode";
+    const timeout = (isPlanReview ? (config.planTimeout ?? DEFAULT_CONFIG.planTimeout) : config.timeout) * 1000;
     response = await waitForResponse({
       server: config.ntfyServer,
       topic: config.topic,
       requestId,
-      timeout: config.timeout * 1000,
+      timeout,
     });
   } catch (err) {
+    console.error("waitForResponse failed:", err);
     return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "deny" } } };
   }
 
