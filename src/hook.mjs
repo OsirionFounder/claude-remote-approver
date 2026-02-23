@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG } from "./config.mjs";
 export const ASK = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "ask" }) }) });
 const DENY = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "deny" }) }) });
 const MAX_RETRIES = 3;
+export const RETRY_DELAY_MS = 1000;
 
 /**
  * Build ntfy action buttons for Approve / Deny.
@@ -37,6 +38,7 @@ export function buildActions(server, topic, requestId) {
 
 /**
  * Send with retry, returning null on exhausted retries.
+ * Uses linear backoff: delay = RETRY_DELAY_MS * attempt (1s, 2s, …).
  */
 export async function sendWithRetry(sendFn, params) {
   for (let i = 0; i < MAX_RETRIES; i++) {
@@ -47,6 +49,7 @@ export async function sendWithRetry(sendFn, params) {
         console.error(`[claude-remote-approver] Notification failed after ${MAX_RETRIES} attempts:`, err.message, "— Falling back to CLI.");
         return null;
       }
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (i + 1)));
     }
   }
   return null;

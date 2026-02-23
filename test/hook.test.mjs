@@ -15,7 +15,7 @@
 
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { processHook, buildActions, sendWithRetry, isAskUserQuestion, buildQuestionActions, buildQuestionMessage, processAskUserQuestion } from "../src/hook.mjs";
+import { processHook, buildActions, sendWithRetry, RETRY_DELAY_MS, isAskUserQuestion, buildQuestionActions, buildQuestionMessage, processAskUserQuestion } from "../src/hook.mjs";
 
 // ---------------------------------------------------------------------------
 // buildActions
@@ -325,20 +325,30 @@ describe("processHook", () => {
   // ==================== Error handling ====================
 
   it("should return ask when all sendNotification retries fail", async () => {
-    const deps = createDeps();
-    deps.sendNotification = mock.fn(async () => {
-      throw new Error("network error");
-    });
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const deps = createDeps();
+      deps.sendNotification = mock.fn(async () => {
+        throw new Error("network error");
+      });
+      const promise = processHook(sampleInput, deps);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(2000);
+      await new Promise(resolve => setImmediate(resolve));
+      const result = await promise;
 
-    const result = await processHook(sampleInput, deps);
-
-    assert.equal(deps.sendNotification.mock.callCount(), 3, "sendNotification should be called 3 times (retry logic)");
-    assert.deepEqual(result, {
-      hookSpecificOutput: {
-        hookEventName: "PermissionRequest",
-        decision: { behavior: "ask" },
-      },
-    });
+      assert.equal(deps.sendNotification.mock.callCount(), 3, "sendNotification should be called 3 times (retry logic)");
+      assert.deepEqual(result, {
+        hookSpecificOutput: {
+          hookEventName: "PermissionRequest",
+          decision: { behavior: "ask" },
+        },
+      });
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("should return ask when waitForResponse throws", async () => {
@@ -358,14 +368,21 @@ describe("processHook", () => {
   });
 
   it("should log error to console.error when sendNotification throws", async () => {
-    const deps = createDeps();
-    deps.sendNotification = mock.fn(async () => {
-      throw new Error("network error");
-    });
+    mock.timers.enable({ apis: ["setTimeout"] });
     const errorSpy = mock.method(console, "error", () => {});
-
     try {
-      await processHook(sampleInput, deps);
+      const deps = createDeps();
+      deps.sendNotification = mock.fn(async () => {
+        throw new Error("network error");
+      });
+      const promise = processHook(sampleInput, deps);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(2000);
+      await new Promise(resolve => setImmediate(resolve));
+      await promise;
+
       assert.equal(errorSpy.mock.callCount(), 1);
       const args = errorSpy.mock.calls[0].arguments;
       assert.ok(
@@ -379,6 +396,7 @@ describe("processHook", () => {
       );
     } finally {
       errorSpy.mock.restore();
+      mock.timers.reset();
     }
   });
 
@@ -578,23 +596,31 @@ describe("processHook", () => {
   // ==================== sendWithRetry via processHook ====================
 
   it("should succeed on second retry when sendNotification fails once then succeeds", async () => {
-    const deps = createDeps();
-    let callCount = 0;
-    deps.sendNotification = mock.fn(async () => {
-      callCount++;
-      if (callCount === 1) throw new Error("first attempt fails");
-      return { ok: true, status: 200 };
-    });
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const deps = createDeps();
+      let callCount = 0;
+      deps.sendNotification = mock.fn(async () => {
+        callCount++;
+        if (callCount === 1) throw new Error("first attempt fails");
+        return { ok: true, status: 200 };
+      });
+      const promise = processHook(sampleInput, deps);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+      const result = await promise;
 
-    const result = await processHook(sampleInput, deps);
-
-    assert.equal(deps.sendNotification.mock.callCount(), 2, "sendNotification should be called twice");
-    assert.deepEqual(result, {
-      hookSpecificOutput: {
-        hookEventName: "PermissionRequest",
-        decision: { behavior: "allow" },
-      },
-    });
+      assert.equal(deps.sendNotification.mock.callCount(), 2, "sendNotification should be called twice");
+      assert.deepEqual(result, {
+        hookSpecificOutput: {
+          hookEventName: "PermissionRequest",
+          decision: { behavior: "allow" },
+        },
+      });
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("should route AskUserQuestion to processAskUserQuestion", async () => {
@@ -637,23 +663,78 @@ describe("sendWithRetry", () => {
   });
 
   it("should retry up to 3 times and return null on all failures", async () => {
-    const mockSend = mock.fn(async () => { throw new Error("fail"); });
-    const result = await sendWithRetry(mockSend, { server: "s", topic: "t" });
-    assert.equal(result, null);
-    assert.equal(mockSend.mock.callCount(), 3);
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const mockSend = mock.fn(async () => { throw new Error("fail"); });
+      const promise = sendWithRetry(mockSend, { server: "s", topic: "t" });
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(2000);
+      await new Promise(resolve => setImmediate(resolve));
+      const result = await promise;
+      assert.equal(result, null);
+      assert.equal(mockSend.mock.callCount(), 3);
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("should succeed on second attempt after first failure", async () => {
-    let count = 0;
-    const mockSend = mock.fn(async () => {
-      count++;
-      if (count === 1) throw new Error("fail");
-      return { ok: true };
-    });
-    const result = await sendWithRetry(mockSend, { server: "s", topic: "t" });
-    assert.deepEqual(result, { ok: true });
-    assert.equal(mockSend.mock.callCount(), 2);
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      let count = 0;
+      const mockSend = mock.fn(async () => {
+        count++;
+        if (count === 1) throw new Error("fail");
+        return { ok: true };
+      });
+      const promise = sendWithRetry(mockSend, { server: "s", topic: "t" });
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+      const result = await promise;
+      assert.deepEqual(result, { ok: true });
+      assert.equal(mockSend.mock.callCount(), 2);
+    } finally {
+      mock.timers.reset();
+    }
   });
+
+  // ==================== Linear Backoff Delay ====================
+
+  it("should export RETRY_DELAY_MS as 1000", () => {
+    assert.equal(typeof RETRY_DELAY_MS, "number", "RETRY_DELAY_MS should be exported as a number");
+    assert.equal(RETRY_DELAY_MS, 1000, "RETRY_DELAY_MS should be 1000ms");
+  });
+
+  it("should delay between retry attempts with linear backoff", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const mockSend = mock.fn(async () => { throw new Error("fail"); });
+      const promise = sendWithRetry(mockSend, { server: "s", topic: "t" });
+
+      // Flush microtasks so first attempt completes and setTimeout(1000) is scheduled
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(mockSend.mock.callCount(), 1, "first attempt should happen immediately");
+
+      // Advance 1000ms to trigger first retry delay
+      mock.timers.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(mockSend.mock.callCount(), 2, "second attempt after 1s delay");
+
+      // Advance 2000ms to trigger second retry delay
+      mock.timers.tick(2000);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(mockSend.mock.callCount(), 3, "third attempt after 2s delay");
+
+      const result = await promise;
+      assert.equal(result, null, "should return null after exhausting retries");
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -808,30 +889,40 @@ describe("processAskUserQuestion", () => {
   });
 
   it("should return ask when sendNotification fails after retries", async () => {
-    const input = {
-      tool_name: "AskUserQuestion",
-      tool_input: {
-        questions: [{
-          question: "Which?",
-          header: "Q",
-          options: [{ label: "A", description: "a" }],
-          multiSelect: false,
-        }],
-      },
-    };
-    const deps = {
-      loadConfig: mock.fn(() => ({
-        topic: "test-topic",
-        ntfyServer: "https://ntfy.sh",
-        timeout: 120,
-      })),
-      sendNotification: mock.fn(async () => { throw new Error("fail"); }),
-      waitForResponse: mock.fn(async () => ({ answer: "A" })),
-    };
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const input = {
+        tool_name: "AskUserQuestion",
+        tool_input: {
+          questions: [{
+            question: "Which?",
+            header: "Q",
+            options: [{ label: "A", description: "a" }],
+            multiSelect: false,
+          }],
+        },
+      };
+      const deps = {
+        loadConfig: mock.fn(() => ({
+          topic: "test-topic",
+          ntfyServer: "https://ntfy.sh",
+          timeout: 120,
+        })),
+        sendNotification: mock.fn(async () => { throw new Error("fail"); }),
+        waitForResponse: mock.fn(async () => ({ answer: "A" })),
+      };
+      const promise = processAskUserQuestion(input, deps);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(2000);
+      await new Promise(resolve => setImmediate(resolve));
+      const result = await promise;
 
-    const result = await processAskUserQuestion(input, deps);
-
-    assert.equal(result.hookSpecificOutput.decision.behavior, "ask");
+      assert.equal(result.hookSpecificOutput.decision.behavior, "ask");
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("should return ask when waitForResponse returns timeout", async () => {
@@ -1044,30 +1135,37 @@ describe("processAskUserQuestion", () => {
   });
 
   it("should log stderr message when sendNotification fails after retries", async () => {
-    const input = {
-      tool_name: "AskUserQuestion",
-      tool_input: {
-        questions: [{
-          question: "Which?",
-          header: "Q",
-          options: [{ label: "A", description: "a" }],
-          multiSelect: false,
-        }],
-      },
-    };
-    const deps = {
-      loadConfig: mock.fn(() => ({
-        topic: "test-topic",
-        ntfyServer: "https://ntfy.sh",
-        timeout: 120,
-      })),
-      sendNotification: mock.fn(async () => { throw new Error("rate limited"); }),
-      waitForResponse: mock.fn(async () => ({ answer: "A" })),
-    };
+    mock.timers.enable({ apis: ["setTimeout"] });
     const errorSpy = mock.method(console, "error", () => {});
-
     try {
-      await processAskUserQuestion(input, deps);
+      const input = {
+        tool_name: "AskUserQuestion",
+        tool_input: {
+          questions: [{
+            question: "Which?",
+            header: "Q",
+            options: [{ label: "A", description: "a" }],
+            multiSelect: false,
+          }],
+        },
+      };
+      const deps = {
+        loadConfig: mock.fn(() => ({
+          topic: "test-topic",
+          ntfyServer: "https://ntfy.sh",
+          timeout: 120,
+        })),
+        sendNotification: mock.fn(async () => { throw new Error("rate limited"); }),
+        waitForResponse: mock.fn(async () => ({ answer: "A" })),
+      };
+      const promise = processAskUserQuestion(input, deps);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+      mock.timers.tick(2000);
+      await new Promise(resolve => setImmediate(resolve));
+      await promise;
+
       assert.equal(errorSpy.mock.callCount(), 1);
       const args = errorSpy.mock.calls[0].arguments;
       assert.ok(
@@ -1077,6 +1175,7 @@ describe("processAskUserQuestion", () => {
       assert.equal(args[1], "rate limited", "should include err.message");
     } finally {
       errorSpy.mock.restore();
+      mock.timers.reset();
     }
   });
 });
