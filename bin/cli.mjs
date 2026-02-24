@@ -36,15 +36,18 @@ export async function main(args, deps) {
       deps.stdout.write(`Setup complete. Topic: ${result.topic}\n\n`);
 
       try {
-        const host = new URL(result.ntfyServer).host;
-        const ntfyUrl = `ntfy://${host}/${result.topic}`;
-        const httpsUrl = `${result.ntfyServer.replace(/\/+$/, "")}/${result.topic}`;
+        const serverUrl = new URL(result.ntfyServer);
+        const isHttps = serverUrl.protocol === "https:";
+        const ntfyUrl = isHttps
+          ? `ntfy://${serverUrl.host}/${result.topic}`
+          : `${result.ntfyServer.replace(/\/+$/, "")}/${result.topic}`;
+        const subscribeUrl = `${result.ntfyServer.replace(/\/+$/, "")}/${result.topic}`;
 
         deps.stdout.write("Scan this QR code in the ntfy app to subscribe:\n\n");
         // qrcode-terminal invokes the callback synchronously
         deps.generateQR(ntfyUrl, { small: true }, (qrString) => {
           deps.stdout.write(qrString + "\n\n");
-          deps.stdout.write(`Subscribe URL: ${httpsUrl}\n`);
+          deps.stdout.write(`Subscribe URL: ${subscribeUrl}\n`);
         });
       } catch {
         deps.stderr.write(`Warning: Invalid ntfyServer URL in config: ${result.ntfyServer}\n`);

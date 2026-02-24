@@ -194,6 +194,30 @@ describe("main", () => {
       );
     });
 
+    it("should use http:// URL in QR code when ntfyServer is HTTP", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        setupResult: {
+          topic: "cra-selfhost123",
+          ntfyServer: "http://192.168.1.100:8080",
+          configPath: "/home/user/.claude-remote-approver.json",
+          settingsPath: "/home/user/.claude/settings.json",
+        },
+      });
+      await main(["setup"], deps);
+
+      assert.equal(deps.generateQR.mock.callCount(), 1);
+      const [text] = deps.generateQR.mock.calls[0].arguments;
+      assert.equal(text, "http://192.168.1.100:8080/cra-selfhost123", `QR text should use http:// for HTTP server, got: ${text}`);
+
+      const output = stdout.output();
+      assert.ok(
+        output.includes("http://192.168.1.100:8080/cra-selfhost123"),
+        `stdout should contain http subscribe URL, got: ${output}`,
+      );
+    });
+
     it("should handle invalid ntfyServer URL gracefully without crashing", async () => {
       const stdout = createMockWriter();
       const stderr = createMockWriter();

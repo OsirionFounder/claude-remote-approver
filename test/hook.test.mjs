@@ -109,7 +109,7 @@ describe("buildActions", () => {
     );
   });
 
-  // ==================== Always Allow ====================
+  // ==================== Always Approve ====================
 
   it("should return 3 actions when permissionSuggestions is provided", () => {
     const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa1", {
@@ -118,16 +118,16 @@ describe("buildActions", () => {
     assert.equal(actions.length, 3);
   });
 
-  it("should place Always Allow between Approve and Deny", () => {
+  it("should place Always Approve between Approve and Deny", () => {
     const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa2", {
       permissionSuggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
     });
     assert.equal(actions[0].label, "Approve");
-    assert.equal(actions[1].label, "Always Allow");
+    assert.equal(actions[1].label, "Always Approve");
     assert.equal(actions[2].label, "Deny");
   });
 
-  it("should include alwaysAllow: true in Always Allow button body", () => {
+  it("should include alwaysAllow: true in Always Approve button body", () => {
     const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa3", {
       permissionSuggestions: [{ type: "toolAlwaysAllow", tool: "Bash" }],
     });
@@ -674,7 +674,7 @@ describe("processHook", () => {
     assert.deepEqual(result.hookSpecificOutput.decision.updatedInput.answers, { "Which option?": "A" });
   });
 
-  // ==================== Always Allow integration ====================
+  // ==================== Always Approve integration ====================
 
   it("should pass permission_suggestions to buildActions when present in input", async () => {
     const inputWithSuggestions = {
@@ -686,8 +686,8 @@ describe("processHook", () => {
     const deps = createDeps();
     await processHook(inputWithSuggestions, deps);
     const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
-    assert.equal(callArgs.actions.length, 3, "Should have 3 actions (Approve, Always Allow, Deny)");
-    assert.equal(callArgs.actions[1].label, "Always Allow");
+    assert.equal(callArgs.actions.length, 3, "Should have 3 actions (Approve, Always Approve, Deny)");
+    assert.equal(callArgs.actions[1].label, "Always Approve");
   });
 
   it("should return updatedPermissions when alwaysAllow is true and permission_suggestions exist", async () => {

@@ -11,13 +11,13 @@ export const RETRY_DELAY_MS = 1000;
 export const _internal = { delay: ms => new Promise(r => setTimeout(r, ms)) };
 
 /**
- * Build ntfy action buttons for Approve / Deny (and optionally Always Allow).
+ * Build ntfy action buttons for Approve / Deny (and optionally Always Approve).
  *
  * @param {string} server - ntfy server URL
  * @param {string} topic - ntfy topic
  * @param {string} requestId - Unique request identifier
  * @param {object} [options] - Optional settings
- * @param {string[]} [options.permissionSuggestions] - When non-empty, adds an "Always Allow" button
+ * @param {string[]} [options.permissionSuggestions] - When non-empty, adds an "Always Approve" button
  * @returns {Array<object>} Array of action objects
  */
 export function buildActions(server, topic, requestId, { permissionSuggestions } = {}) {
@@ -41,7 +41,7 @@ export function buildActions(server, topic, requestId, { permissionSuggestions }
   if (permissionSuggestions?.length > 0) {
     actions.splice(1, 0, {
       action: "http",
-      label: "Always Allow",
+      label: "Always Approve",
       url,
       body: JSON.stringify({ requestId, approved: true, alwaysAllow: true }),
       method: "POST",
