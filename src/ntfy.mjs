@@ -127,6 +127,7 @@ export function stripMarkdown(text) {
 // ---------------------------------------------------------------------------
 
 const MAX_INPUT = 10000;
+const MESSAGE_MAX_LENGTH = 1000;
 
 /**
  * Count consecutive runs of character ch starting at pos.
@@ -442,37 +443,32 @@ function stripInline(text) {
  * @returns {{ title: string, message: string }}
  */
 export function formatToolInfo({ hook_event_name, tool_name, tool_input }) {
-  // Plan approval detection
-  if (tool_name === 'ExitPlanMode' && typeof tool_input?.plan === 'string') {
-    const PLAN_MESSAGE_MAX_LENGTH = 300;
-    const title = 'Claude Code: Plan Review';
-    if (!tool_input.plan.trim()) {
-      return { title, message: '(empty plan)' };
-    }
-    const raw = tool_input.plan;
-    const plain = stripMarkdown(raw);
-    const message = plain
-      ? (plain.length > PLAN_MESSAGE_MAX_LENGTH ? plain.slice(0, PLAN_MESSAGE_MAX_LENGTH) + '...' : plain)
-      : '(empty plan)';
-    return { title, message };
-  }
-
-  const title = `Claude Code: ${tool_name}`;
+  let title;
   let message;
 
-  switch (tool_name) {
-    case 'Bash':
-      message = tool_input?.command ?? JSON.stringify(tool_input);
-      break;
-    case 'Read':
-    case 'Write':
-    case 'Edit':
-      message = tool_input?.file_path ?? JSON.stringify(tool_input);
-      break;
-    default:
-      message = JSON.stringify(tool_input);
-      break;
+  if (tool_name === 'ExitPlanMode' && typeof tool_input?.plan === 'string') {
+    title = 'Claude Code: Plan Review';
+    const plain = tool_input.plan.trim() ? stripMarkdown(tool_input.plan) : '';
+    message = plain || '(empty plan)';
+  } else {
+    title = `Claude Code: ${tool_name}`;
+    switch (tool_name) {
+      case 'Bash':
+        message = tool_input?.command ?? JSON.stringify(tool_input);
+        break;
+      case 'Read':
+      case 'Write':
+      case 'Edit':
+        message = tool_input?.file_path ?? JSON.stringify(tool_input);
+        break;
+      default:
+        message = JSON.stringify(tool_input);
+        break;
+    }
   }
 
+  if (message.length > MESSAGE_MAX_LENGTH) {
+    message = message.slice(0, MESSAGE_MAX_LENGTH) + '...';
+  }
   return { title, message };
 }

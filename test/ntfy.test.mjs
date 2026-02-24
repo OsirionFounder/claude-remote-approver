@@ -759,8 +759,8 @@ describe("formatToolInfo", () => {
     );
   });
 
-  it("should truncate plan text to 300 characters and append '...' when it exceeds the limit", () => {
-    const longPlan = "# Plan\n\n" + "A".repeat(400);
+  it("should truncate plan text to 1000 characters and append '...' when it exceeds the limit", () => {
+    const longPlan = "# Plan\n\n" + "A".repeat(1500);
     const result = formatToolInfo({
       hook_event_name: "PermissionRequest",
       tool_name: "ExitPlanMode",
@@ -768,12 +768,80 @@ describe("formatToolInfo", () => {
     });
 
     assert.ok(
-      result.message.length <= 303,
-      `Message should be at most 303 characters (300 + "..."), got length: ${result.message.length}`
+      result.message.length <= 1003,
+      `Message should be at most 1003 characters (1000 + "..."), got length: ${result.message.length}`
+    );
+    assert.ok(
+      result.message.length > 303,
+      `Message should use 1000-char limit (not old 300-char limit), got length: ${result.message.length}`
     );
     assert.ok(
       result.message.endsWith("..."),
       `Message should end with "..." when truncated, got: "${result.message.slice(-10)}"`
+    );
+  });
+
+  it("should truncate long Bash command to 1000 characters and append '...'", () => {
+    const longCommand = "x".repeat(1500);
+    const result = formatToolInfo({
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: longCommand },
+    });
+
+    assert.ok(
+      result.message.length <= 1003,
+      `Message should be at most 1003 characters (1000 + "..."), got length: ${result.message.length}`
+    );
+    assert.ok(
+      result.message.endsWith("..."),
+      `Message should end with "..." when truncated`
+    );
+  });
+
+  it("should not truncate messages shorter than 1000 characters", () => {
+    const shortCommand = "x".repeat(500);
+    const result = formatToolInfo({
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: shortCommand },
+    });
+
+    assert.equal(
+      result.message,
+      shortCommand,
+      "Short messages should not be truncated"
+    );
+  });
+
+  it("should not truncate a message that is exactly 1000 characters", () => {
+    const exactCommand = "x".repeat(1000);
+    const result = formatToolInfo({
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: exactCommand },
+    });
+    assert.equal(
+      result.message,
+      exactCommand,
+      "Exactly 1000-char message should not be truncated"
+    );
+  });
+
+  it("should truncate long messages from unknown tools via default branch", () => {
+    const largeInput = { data: "y".repeat(1500) };
+    const result = formatToolInfo({
+      hook_event_name: "PreToolUse",
+      tool_name: "UnknownTool",
+      tool_input: largeInput,
+    });
+    assert.ok(
+      result.message.length <= 1003,
+      `Message should be at most 1003 characters (1000 + "..."), got length: ${result.message.length}`
+    );
+    assert.ok(
+      result.message.endsWith("..."),
+      "Message should end with '...' when truncated"
     );
   });
 
