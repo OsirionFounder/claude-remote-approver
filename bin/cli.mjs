@@ -239,6 +239,35 @@ if (isMain) {
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       return new Promise((resolve) => rl.question(question, (answer) => { rl.close(); resolve(answer); }));
     },
+    promptSecret: async (question) => {
+      process.stdout.write(question);
+      return new Promise((resolve) => {
+        let input = '';
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        process.stdin.setEncoding('utf8');
+        const onData = (ch) => {
+          if (ch === '\r' || ch === '\n') {
+            process.stdin.setRawMode(false);
+            process.stdin.pause();
+            process.stdin.removeListener('data', onData);
+            process.stdout.write('\n');
+            resolve(input);
+          } else if (ch === '\u007f' || ch === '\b') {
+            if (input.length > 0) {
+              input = input.slice(0, -1);
+              process.stdout.write('\b \b');
+            }
+          } else if (ch === '\u0003') {
+            process.exit(0);
+          } else {
+            input += ch;
+            process.stdout.write('*');
+          }
+        };
+        process.stdin.on('data', onData);
+      });
+    },
   };
 
   await main(args, deps);

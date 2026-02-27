@@ -106,6 +106,7 @@ export async function runSetup({
   saveConfig,
   loadConfig,
   prompt,
+  promptSecret,
 }) {
   const topic = generateTopic();
 
@@ -116,7 +117,8 @@ export async function runSetup({
     const useAuth = await prompt("Use authenticated topics? (y/n): ");
     if (useAuth?.toLowerCase() === "y") {
       config.ntfyUsername = await prompt("Username: ");
-      config.ntfyPassword = await prompt("Password: ");
+      const promptSecretFn = promptSecret || prompt;
+      config.ntfyPassword = await promptSecretFn("Password: ");
     }
   }
 

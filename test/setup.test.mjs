@@ -162,6 +162,7 @@ describe("runSetup", () => {
       saveConfig: (config, path) => { savedConfig = config; },
       loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, ntfyUsername: "", ntfyPassword: "", autoApprove: [], autoDeny: [] }),
       prompt: async (question) => promptResponses[promptIdx++],
+      promptSecret: async (question) => promptResponses[promptIdx++],
     });
 
     assert.equal(savedConfig.ntfyUsername, "myuser");
