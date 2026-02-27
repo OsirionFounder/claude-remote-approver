@@ -13,8 +13,12 @@
  * - main(['uninstall'], deps) — unregisters hook, deletes config, handles ENOENT
  * - main(['disable'], deps) — unregisters hook WITHOUT deleting config
  * - main(['enable'], deps) — loads config, registers hook when topic exists
+ * - main(['test'], deps) — passes auth from resolveAuth to sendNotification
+ * - main(['test'], deps) — does not include auth when resolveAuth returns null
+ * - main(['status'], deps) — displays auth status (username visible, password hidden)
+ * - main(['status'], deps) — displays "not configured" when auth is null
  *
- * TDD Red phase — all tests must FAIL because main is undefined (stub).
+ * TDD Red phase — auth-related tests must FAIL because main doesn't use resolveAuth yet.
  */
 
 import { describe, it, mock, beforeEach } from "node:test";
@@ -63,6 +67,7 @@ function createDeps(overrides = {}) {
     saveConfig: mock.fn(() => {}),
     generateTopic: mock.fn(() => "cra-generated123"),
     sendNotification: mock.fn(async () => ({ ok: true, status: 200 })),
+    resolveAuth: overrides.resolveAuth ?? mock.fn(() => null),
     waitForResponse: mock.fn(
       async () => overrides.waitResult ?? { approved: true },
     ),
@@ -327,6 +332,29 @@ describe("main", () => {
         "sendNotification should NOT be called when topic is empty",
       );
     });
+
+    it("should pass auth to sendNotification when resolveAuth returns credentials", async () => {
+      const auth = { username: "testuser", password: "testpass" };
+      const deps = createDeps({
+        resolveAuth: mock.fn(() => auth),
+      });
+
+      await main(["test"], deps);
+
+      const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
+      assert.deepEqual(callArgs.auth, auth);
+    });
+
+    it("should not include auth in sendNotification when resolveAuth returns null", async () => {
+      const deps = createDeps({
+        resolveAuth: mock.fn(() => null),
+      });
+
+      await main(["test"], deps);
+
+      const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
+      assert.equal(callArgs.auth, null);
+    });
   });
 
   // =========================================================================
@@ -355,6 +383,34 @@ describe("main", () => {
         output.includes("https://ntfy.sh"),
         `stdout should contain the server URL, got: ${output}`,
       );
+    });
+
+    it("should display auth status when auth is configured", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        resolveAuth: mock.fn(() => ({ username: "myuser", password: "secret" })),
+      });
+
+      await main(["status"], deps);
+
+      const output = stdout.output();
+      assert.ok(output.includes("Auth:"), `Should show Auth line, got: ${output}`);
+      assert.ok(output.includes("myuser"), `Should show username, got: ${output}`);
+      assert.ok(!output.includes("secret"), `Should NOT show password, got: ${output}`);
+    });
+
+    it("should display 'not configured' when auth is not configured", async () => {
+      const stdout = createMockWriter();
+      const deps = createDeps({
+        stdout,
+        resolveAuth: mock.fn(() => null),
+      });
+
+      await main(["status"], deps);
+
+      const output = stdout.output();
+      assert.ok(output.includes("not configured"), `Should show not configured, got: ${output}`);
     });
   });
 

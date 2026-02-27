@@ -11,7 +11,7 @@
 
 import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { sendNotification, waitForResponse, formatToolInfo, stripMarkdown } from "../src/ntfy.mjs";
+import { sendNotification, waitForResponse, formatToolInfo, stripMarkdown, buildAuthHeader } from "../src/ntfy.mjs";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,6 +69,38 @@ function createStreamingMockFetch(events) {
   fn.calls = calls;
   return fn;
 }
+
+// ---------------------------------------------------------------------------
+// buildAuthHeader
+// ---------------------------------------------------------------------------
+
+describe("buildAuthHeader", () => {
+  it("should be a function exported from the module", () => {
+    assert.equal(typeof buildAuthHeader, "function");
+  });
+
+  it("should return empty object when auth is null", () => {
+    const result = buildAuthHeader(null);
+    assert.deepEqual(result, {});
+  });
+
+  it("should return empty object when auth is undefined", () => {
+    const result = buildAuthHeader(undefined);
+    assert.deepEqual(result, {});
+  });
+
+  it("should return Authorization header with Basic base64 when auth has username and password", () => {
+    const result = buildAuthHeader({ username: "user", password: "pass" });
+    // btoa("user:pass") === "dXNlcjpwYXNz"
+    assert.deepEqual(result, { Authorization: "Basic dXNlcjpwYXNz" });
+  });
+
+  it("should handle special characters in username and password", () => {
+    const result = buildAuthHeader({ username: "user@domain", password: "p@ss:word" });
+    const expected = `Basic ${btoa("user@domain:p@ss:word")}`;
+    assert.deepEqual(result, { Authorization: expected });
+  });
+});
 
 // ---------------------------------------------------------------------------
 // sendNotification
@@ -273,6 +305,51 @@ describe("sendNotification", () => {
 
     // Should strip trailing slash and POST to base URL only
     assert.equal(mockFetch.calls[0].url, "https://ntfy.sh");
+  });
+
+  // ==================== Auth ====================
+
+  it("should include Authorization header when auth is provided", async () => {
+    const mockFetch = createMockFetch();
+    globalThis.fetch = mockFetch;
+
+    await sendNotification({
+      server: "https://ntfy.sh",
+      topic: "test-topic",
+      title: "T",
+      message: "M",
+      actions: [],
+      requestId: "req-auth1",
+      auth: { username: "myuser", password: "mypass" },
+    });
+
+    const headers = mockFetch.calls[0].options.headers;
+    assert.equal(
+      headers.Authorization,
+      `Basic ${btoa("myuser:mypass")}`,
+      "Authorization header should contain Basic auth with base64-encoded credentials"
+    );
+  });
+
+  it("should NOT include Authorization header when auth is not provided", async () => {
+    const mockFetch = createMockFetch();
+    globalThis.fetch = mockFetch;
+
+    await sendNotification({
+      server: "https://ntfy.sh",
+      topic: "test-topic",
+      title: "T",
+      message: "M",
+      actions: [],
+      requestId: "req-noauth1",
+    });
+
+    const headers = mockFetch.calls[0].options.headers;
+    assert.equal(
+      headers.Authorization,
+      undefined,
+      "Authorization header should not be present when auth is not provided"
+    );
   });
 });
 
@@ -567,6 +644,59 @@ describe("waitForResponse", () => {
     });
 
     assert.deepEqual(result, { approved: true, alwaysAllow: false });
+  });
+
+  // ==================== Auth ====================
+
+  it("should include Authorization header when auth is provided", async () => {
+    const events = [
+      {
+        event: "message",
+        message: JSON.stringify({ requestId: "req-auth2", approved: true }),
+      },
+    ];
+    const mockFetch = createStreamingMockFetch(events);
+    globalThis.fetch = mockFetch;
+
+    await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-auth2",
+      timeout: 5000,
+      auth: { username: "myuser", password: "mypass" },
+    });
+
+    const headers = mockFetch.calls[0].options.headers;
+    assert.equal(
+      headers.Authorization,
+      `Basic ${btoa("myuser:mypass")}`,
+      "Authorization header should contain Basic auth with base64-encoded credentials"
+    );
+  });
+
+  it("should NOT include Authorization header when auth is not provided", async () => {
+    const events = [
+      {
+        event: "message",
+        message: JSON.stringify({ requestId: "req-noauth2", approved: true }),
+      },
+    ];
+    const mockFetch = createStreamingMockFetch(events);
+    globalThis.fetch = mockFetch;
+
+    await waitForResponse({
+      server: "https://ntfy.sh",
+      topic: "my-topic",
+      requestId: "req-noauth2",
+      timeout: 5000,
+    });
+
+    const headers = mockFetch.calls[0].options.headers;
+    assert.equal(
+      headers,
+      undefined,
+      "No headers object should be present when auth is not provided"
+    );
   });
 });
 

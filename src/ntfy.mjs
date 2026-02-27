@@ -1,18 +1,23 @@
 // src/ntfy.mjs
 
+export function buildAuthHeader(auth) {
+  if (!auth) return {};
+  return { Authorization: `Basic ${Buffer.from(auth.username + ':' + auth.password).toString('base64')}` };
+}
+
 /**
  * Send a push notification via ntfy.
  *
  * @param {{ server: string, topic: string, title: string, message: string, actions: unknown[], requestId: string }} params
  * @returns {Promise<Response>}
  */
-export async function sendNotification({ server, topic, title, message, actions, requestId }) {
+export async function sendNotification({ server, topic, title, message, actions, requestId, auth }) {
   const baseUrl = server.replace(/\/+$/, '');
   const url = baseUrl;
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...buildAuthHeader(auth) },
     body: JSON.stringify({ topic, title, message, actions }),
   });
 
@@ -29,7 +34,7 @@ export async function sendNotification({ server, topic, title, message, actions,
  * @param {{ server: string, topic: string, requestId: string, timeout: number }} params
  * @returns {Promise<{ approved: boolean } | { timeout: true } | { error: Error } | { answer: string }>}
  */
-export async function waitForResponse({ server, topic, requestId, timeout }) {
+export async function waitForResponse({ server, topic, requestId, timeout, auth }) {
   const baseUrl = server.replace(/\/+$/, '');
   const url = `${baseUrl}/${topic}-response/json`;
 
@@ -39,7 +44,8 @@ export async function waitForResponse({ server, topic, requestId, timeout }) {
   let timer;
 
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const authHeaders = auth ? buildAuthHeader(auth) : undefined;
+    const response = await fetch(url, { signal: controller.signal, ...(authHeaders && { headers: authHeaders }) });
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';

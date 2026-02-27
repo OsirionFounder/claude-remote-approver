@@ -10,6 +10,8 @@
  * - generateTopic returns string matching /^cra-[a-f0-9]{32}$/
  * - saveConfig writes file with mode 0o600
  * - loadConfig validates types and falls back to defaults for invalid values
+ * - resolveAuth returns credentials from env or config
+ * - resolveAuth returns null when credentials are incomplete
  */
 
 import { describe, it, before, after } from "node:test";
@@ -23,6 +25,7 @@ import {
   loadConfig,
   saveConfig,
   generateTopic,
+  resolveAuth,
 } from "../src/config.mjs";
 
 // ==================== CONFIG_PATH ====================
@@ -80,6 +83,14 @@ describe("DEFAULT_CONFIG", () => {
   it("should have planTimeout as 300", () => {
     assert.equal(DEFAULT_CONFIG.planTimeout, 300);
   });
+
+  it("should have ntfyUsername as empty string", () => {
+    assert.equal(DEFAULT_CONFIG.ntfyUsername, "");
+  });
+
+  it("should have ntfyPassword as empty string", () => {
+    assert.equal(DEFAULT_CONFIG.ntfyPassword, "");
+  });
 });
 
 // ==================== loadConfig ====================
@@ -114,6 +125,8 @@ describe("loadConfig", () => {
       planTimeout: 300,
       autoApprove: [],
       autoDeny: [],
+      ntfyUsername: "",
+      ntfyPassword: "",
     });
   });
 
@@ -141,6 +154,8 @@ describe("loadConfig", () => {
       planTimeout: 600,
       autoApprove: ["Bash(*)"],
       autoDeny: ["mcp__*"],
+      ntfyUsername: "",
+      ntfyPassword: "",
     };
     fs.writeFileSync(tmpConfigPath, JSON.stringify(fullConfig, null, 2));
 
@@ -209,6 +224,18 @@ describe("loadConfig", () => {
     const config = loadConfig(tmpConfigPath);
     assert.equal(config.planTimeout, 600);
   });
+
+  it("should fall back to default ntfyUsername when ntfyUsername is not a string", () => {
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ ntfyUsername: 123 }));
+    const config = loadConfig(tmpConfigPath);
+    assert.equal(config.ntfyUsername, DEFAULT_CONFIG.ntfyUsername);
+  });
+
+  it("should fall back to default ntfyPassword when ntfyPassword is not a string", () => {
+    fs.writeFileSync(tmpConfigPath, JSON.stringify({ ntfyPassword: true }));
+    const config = loadConfig(tmpConfigPath);
+    assert.equal(config.ntfyPassword, DEFAULT_CONFIG.ntfyPassword);
+  });
 });
 
 // ==================== saveConfig ====================
@@ -264,6 +291,8 @@ describe("saveConfig", () => {
       planTimeout: 180,
       autoApprove: ["Read"],
       autoDeny: ["Bash(rm*)"],
+      ntfyUsername: "",
+      ntfyPassword: "",
     };
 
     saveConfig(original, tmpConfigPath);
@@ -315,5 +344,62 @@ describe("generateTopic", () => {
       topics.add(generateTopic());
     }
     assert.equal(topics.size, 20, "All 20 generated topics should be unique");
+  });
+});
+
+// ==================== resolveAuth ====================
+
+describe("resolveAuth", () => {
+  it("should be a function", () => {
+    assert.equal(typeof resolveAuth, "function");
+  });
+
+  it("should return { username, password } when env vars NTFY_USERNAME and NTFY_PASSWORD are set", () => {
+    const env = { NTFY_USERNAME: "user1", NTFY_PASSWORD: "pass1" };
+    const result = resolveAuth({}, env);
+    assert.deepEqual(result, { username: "user1", password: "pass1" });
+  });
+
+  it("should return { username, password } from config when env vars are not set", () => {
+    const config = { ntfyUsername: "confuser", ntfyPassword: "confpass" };
+    const env = {};
+    const result = resolveAuth(config, env);
+    assert.deepEqual(result, { username: "confuser", password: "confpass" });
+  });
+
+  it("should prioritize env vars over config values", () => {
+    const config = { ntfyUsername: "confuser", ntfyPassword: "confpass" };
+    const env = { NTFY_USERNAME: "envuser", NTFY_PASSWORD: "envpass" };
+    const result = resolveAuth(config, env);
+    assert.deepEqual(result, { username: "envuser", password: "envpass" });
+  });
+
+  it("should return null when both username and password are empty strings", () => {
+    const config = { ntfyUsername: "", ntfyPassword: "" };
+    const env = {};
+    const result = resolveAuth(config, env);
+    assert.equal(result, null);
+  });
+
+  it("should return null when only username is set (no password)", () => {
+    const config = { ntfyUsername: "user-only", ntfyPassword: "" };
+    const env = {};
+    const result = resolveAuth(config, env);
+    assert.equal(result, null);
+  });
+
+  it("should return null when only password is set (no username)", () => {
+    const config = { ntfyUsername: "", ntfyPassword: "pass-only" };
+    const env = {};
+    const result = resolveAuth(config, env);
+    assert.equal(result, null);
+  });
+
+  it("should accept a single argument using process.env as default", () => {
+    // Verify the function can be called with just one argument (config)
+    // without throwing a TypeError about missing parameters.
+    assert.equal(resolveAuth.length >= 1, true);
+    // Call with one arg — should not throw
+    assert.doesNotThrow(() => resolveAuth({}));
   });
 });

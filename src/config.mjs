@@ -13,6 +13,8 @@ export const DEFAULT_CONFIG = {
   // autoApprove/autoDeny are reserved for future use and not yet implemented
   autoApprove: [],
   autoDeny: [],
+  ntfyUsername: "",
+  ntfyPassword: "",
 };
 
 export function loadConfig(configPath = CONFIG_PATH) {
@@ -26,6 +28,8 @@ export function loadConfig(configPath = CONFIG_PATH) {
     if (!Number.isFinite(config.planTimeout) || config.planTimeout <= 0) config.planTimeout = DEFAULT_CONFIG.planTimeout;
     if (!Array.isArray(config.autoApprove)) config.autoApprove = DEFAULT_CONFIG.autoApprove;
     if (!Array.isArray(config.autoDeny)) config.autoDeny = DEFAULT_CONFIG.autoDeny;
+    if (typeof config.ntfyUsername !== "string") config.ntfyUsername = DEFAULT_CONFIG.ntfyUsername;
+    if (typeof config.ntfyPassword !== "string") config.ntfyPassword = DEFAULT_CONFIG.ntfyPassword;
     return config;
   } catch (err) {
     if (err.code === "ENOENT") {
@@ -41,4 +45,11 @@ export function saveConfig(config, configPath = CONFIG_PATH) {
 
 export function generateTopic() {
   return `cra-${crypto.randomBytes(16).toString("hex")}`;
+}
+
+export function resolveAuth(config, env = process.env) {
+  const username = env.NTFY_USERNAME || config.ntfyUsername || "";
+  const password = env.NTFY_PASSWORD || config.ntfyPassword || "";
+  if (!username || !password) return null;
+  return { username, password };
 }

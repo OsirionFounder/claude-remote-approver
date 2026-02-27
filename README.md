@@ -128,6 +128,7 @@ claude-remote-approver status
 # Topic:   cra-a1b2c3d4...
 # Server:  https://ntfy.sh
 # Timeout: 120s
+# Auth:    not configured
 ```
 
 ### `enable`
@@ -197,6 +198,8 @@ Config file location: `~/.claude-remote-approver.json`
 | `planTimeout` | `number` | `300` | Seconds to wait for ExitPlanMode (plan approval) responses. Plan reviews need more reading time. |
 | `autoApprove` | `string[]` | `[]` | Reserved for future use. |
 | `autoDeny` | `string[]` | `[]` | Reserved for future use. |
+| `ntfyUsername` | `string` | `""` | Username for ntfy Basic Auth. Set this if your ntfy server requires authentication. |
+| `ntfyPassword` | `string` | `""` | Password for ntfy Basic Auth. Set this if your ntfy server requires authentication. |
 
 ### Using a self-hosted ntfy server
 
@@ -209,6 +212,39 @@ Edit `~/.claude-remote-approver.json` and set `ntfyServer` to your server URL:
 ```
 
 Then subscribe to the topic on your self-hosted server in the ntfy app.
+
+### Using authenticated topics
+
+If your ntfy server requires authentication, you can configure Basic Auth credentials.
+
+**Option 1: Interactive setup**
+
+```bash
+claude-remote-approver setup
+# ... after topic generation, you will be asked:
+# Use authenticated topics? (y/n): y
+# Username: myuser
+# Password: mypassword
+```
+
+**Option 2: Edit `~/.claude-remote-approver.json`**
+
+```json
+{
+  "ntfyServer": "https://ntfy.example.com",
+  "ntfyUsername": "myuser",
+  "ntfyPassword": "mypassword"
+}
+```
+
+**Option 3: Environment variables**
+
+```bash
+export NTFY_USERNAME=myuser
+export NTFY_PASSWORD=mypassword
+```
+
+Environment variables take priority over settings.json values. Credentials are included as `Authorization: Basic <base64>` headers in all requests to the ntfy server, including action button callbacks.
 
 ## How ntfy.sh works
 

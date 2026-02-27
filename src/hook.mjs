@@ -2,6 +2,7 @@
 
 import crypto from "node:crypto";
 import { DEFAULT_CONFIG } from "./config.mjs";
+import { buildAuthHeader } from "./ntfy.mjs";
 
 export const ASK = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "ask" }) }) });
 const DENY = Object.freeze({ hookSpecificOutput: Object.freeze({ hookEventName: "PermissionRequest", decision: Object.freeze({ behavior: "deny" }) }) });
@@ -20,8 +21,9 @@ export const _internal = { delay: ms => new Promise(r => setTimeout(r, ms)) };
  * @param {string[]} [options.permissionSuggestions] - When non-empty, adds an "Always Approve" button
  * @returns {Array<object>} Array of action objects
  */
-export function buildActions(server, topic, requestId, { permissionSuggestions } = {}) {
+export function buildActions(server, topic, requestId, { permissionSuggestions, auth } = {}) {
   const url = `${server}/${topic}-response`;
+  const authHeaders = auth ? buildAuthHeader(auth) : undefined;
   const actions = [
     {
       action: "http",
@@ -29,6 +31,7 @@ export function buildActions(server, topic, requestId, { permissionSuggestions }
       url,
       body: JSON.stringify({ requestId, approved: true }),
       method: "POST",
+      ...(authHeaders && { headers: authHeaders }),
     },
     {
       action: "http",
@@ -36,6 +39,7 @@ export function buildActions(server, topic, requestId, { permissionSuggestions }
       url,
       body: JSON.stringify({ requestId, approved: false }),
       method: "POST",
+      ...(authHeaders && { headers: authHeaders }),
     },
   ];
   if (permissionSuggestions?.length > 0) {
@@ -45,6 +49,7 @@ export function buildActions(server, topic, requestId, { permissionSuggestions }
       url,
       body: JSON.stringify({ requestId, approved: true, alwaysAllow: true }),
       method: "POST",
+      ...(authHeaders && { headers: authHeaders }),
     });
   }
   return actions;
@@ -83,14 +88,16 @@ export function isAskUserQuestion(input) {
 /**
  * Build ntfy action buttons for question options.
  */
-export function buildQuestionActions(server, topic, requestId, options) {
+export function buildQuestionActions(server, topic, requestId, options, { auth } = {}) {
   const url = `${server}/${topic}-response`;
+  const authHeaders = auth ? buildAuthHeader(auth) : undefined;
   return options.map((opt) => ({
     action: "http",
     label: opt.label,
     url,
     body: JSON.stringify({ requestId, answer: opt.label }),
     method: "POST",
+    ...(authHeaders && { headers: authHeaders }),
   }));
 }
 
@@ -116,6 +123,7 @@ export async function processAskUserQuestion(input, deps) {
   const config = deps.loadConfig();
   if (!config.topic) return ASK;
 
+  const auth = deps.resolveAuth ? deps.resolveAuth(config) : null;
   const questions = input.tool_input.questions;
   const answers = {};
 
@@ -132,7 +140,7 @@ export async function processAskUserQuestion(input, deps) {
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       const batchInfo = batches.length > 1 ? `(${i + 1}/${batches.length})` : undefined;
-      const actions = buildQuestionActions(config.ntfyServer, config.topic, requestId, batch);
+      const actions = buildQuestionActions(config.ntfyServer, config.topic, requestId, batch, { ...(auth && { auth }) });
       const message = buildQuestionMessage(q.question, batch, { multiSelect: q.multiSelect, batchInfo });
 
       const sent = await sendWithRetry(deps.sendNotification, {
@@ -142,6 +150,7 @@ export async function processAskUserQuestion(input, deps) {
         message,
         actions,
         requestId,
+        ...(auth && { auth }),
       });
       if (!sent) return ASK;
     }
@@ -154,6 +163,7 @@ export async function processAskUserQuestion(input, deps) {
         topic: config.topic,
         requestId,
         timeout: config.timeout * 1000,
+        ...(auth && { auth }),
       });
     } catch (err) {
       console.error("[claude-remote-approver] Response listener failed:", err.message, "— Falling back to CLI.");
@@ -193,21 +203,24 @@ export async function processAskUserQuestion(input, deps) {
  * @param {Function} deps.formatToolInfo
  * @returns {Promise<object>} Decision JSON
  */
-export async function processHook(input, { loadConfig, sendNotification, waitForResponse, formatToolInfo }) {
+export async function processHook(input, { loadConfig, sendNotification, waitForResponse, formatToolInfo, resolveAuth }) {
   const config = loadConfig();
 
   if (!config.topic) {
     return ASK;
   }
 
+  const auth = resolveAuth ? resolveAuth(config) : null;
+
   if (isAskUserQuestion(input)) {
-    return processAskUserQuestion(input, { loadConfig, sendNotification, waitForResponse });
+    return processAskUserQuestion(input, { loadConfig, sendNotification, waitForResponse, resolveAuth });
   }
 
   const requestId = crypto.randomUUID();
   const { title, message } = formatToolInfo(input);
   const actions = buildActions(config.ntfyServer, config.topic, requestId, {
     permissionSuggestions: input.permission_suggestions,
+    ...(auth && { auth }),
   });
 
   const sent = await sendWithRetry(sendNotification, {
@@ -217,6 +230,7 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
     message,
     actions,
     requestId,
+    ...(auth && { auth }),
   });
   if (!sent) return ASK;
 
@@ -229,6 +243,7 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
       topic: config.topic,
       requestId,
       timeout,
+      ...(auth && { auth }),
     });
   } catch (err) {
     console.error("[claude-remote-approver] Response listener failed:", err.message, "— Falling back to CLI.");

@@ -17,6 +17,23 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { processHook, buildActions, sendWithRetry, RETRY_DELAY_MS, _internal, isAskUserQuestion, buildQuestionActions, buildQuestionMessage, processAskUserQuestion } from "../src/hook.mjs";
 
+// Dynamic import helper — buildAuthHeader does not exist yet (TDD Red phase).
+// Using a lazy getter avoids a static import error that would prevent ALL tests from loading.
+let _buildAuthHeader;
+async function getBuildAuthHeader() {
+  if (_buildAuthHeader !== undefined) return _buildAuthHeader;
+  try {
+    const mod = await import("../src/ntfy.mjs");
+    if (typeof mod.buildAuthHeader !== "function") {
+      throw new Error("buildAuthHeader is not exported from ntfy.mjs");
+    }
+    _buildAuthHeader = mod.buildAuthHeader;
+  } catch {
+    _buildAuthHeader = null;
+  }
+  return _buildAuthHeader;
+}
+
 // ---------------------------------------------------------------------------
 // buildActions
 // ---------------------------------------------------------------------------
@@ -149,6 +166,26 @@ describe("buildActions", () => {
   it("should return 2 actions when no options object is provided", () => {
     const actions = buildActions("https://ntfy.sh", "my-topic", "req-aa5");
     assert.equal(actions.length, 2);
+  });
+
+  // ==================== Auth (Basic Auth headers) ====================
+
+  it("should include headers with Authorization on each action when auth is provided", async () => {
+    const buildAuthHeaderFn = await getBuildAuthHeader();
+    assert.ok(buildAuthHeaderFn, "buildAuthHeader must be exported from ntfy.mjs");
+    const auth = { username: "user", password: "pass" };
+    const actions = buildActions("https://ntfy.sh", "my-topic", "req-auth1", { auth });
+    const expectedHeaders = buildAuthHeaderFn(auth);
+    for (const action of actions) {
+      assert.deepEqual(action.headers, expectedHeaders);
+    }
+  });
+
+  it("should NOT include headers property on actions when auth is not provided", () => {
+    const actions = buildActions("https://ntfy.sh", "my-topic", "req-auth2");
+    for (const action of actions) {
+      assert.equal(action.headers, undefined, "actions should not have headers when auth is not provided");
+    }
   });
 });
 
@@ -768,6 +805,73 @@ describe("processHook", () => {
       },
     });
   });
+
+  // ==================== Auth threading (Basic Auth) ====================
+
+  it("should pass auth to sendNotification when resolveAuth returns credentials", async () => {
+    const auth = { username: "myuser", password: "mypass" };
+    const deps = createDeps();
+    deps.resolveAuth = mock.fn(() => auth);
+
+    await processHook(sampleInput, deps);
+
+    assert.equal(deps.sendNotification.mock.callCount(), 1);
+    const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
+    assert.deepEqual(callArgs.auth, auth, "sendNotification should receive auth in params");
+  });
+
+  it("should pass auth to waitForResponse when resolveAuth returns credentials", async () => {
+    const auth = { username: "myuser", password: "mypass" };
+    const deps = createDeps();
+    deps.resolveAuth = mock.fn(() => auth);
+
+    await processHook(sampleInput, deps);
+
+    assert.equal(deps.waitForResponse.mock.callCount(), 1);
+    const callArgs = deps.waitForResponse.mock.calls[0].arguments[0];
+    assert.deepEqual(callArgs.auth, auth, "waitForResponse should receive auth in params");
+  });
+
+  it("should pass auth to buildActions so actions have Authorization headers", async () => {
+    const buildAuthHeaderFn = await getBuildAuthHeader();
+    assert.ok(buildAuthHeaderFn, "buildAuthHeader must be exported from ntfy.mjs");
+    const auth = { username: "myuser", password: "mypass" };
+    const deps = createDeps();
+    deps.resolveAuth = mock.fn(() => auth);
+
+    await processHook(sampleInput, deps);
+
+    const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
+    const expectedHeaders = buildAuthHeaderFn(auth);
+    for (const action of callArgs.actions) {
+      assert.deepEqual(action.headers, expectedHeaders, "each action should have Authorization headers");
+    }
+  });
+
+  it("should work without auth when resolveAuth returns null", async () => {
+    const deps = createDeps();
+    deps.resolveAuth = mock.fn(() => null);
+
+    const result = await processHook(sampleInput, deps);
+
+    // Existing behavior preserved: allow decision
+    assert.deepEqual(result, {
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: { behavior: "allow" },
+      },
+    });
+    // sendNotification should NOT have auth
+    const sendArgs = deps.sendNotification.mock.calls[0].arguments[0];
+    assert.equal(sendArgs.auth, undefined, "sendNotification should not have auth when resolveAuth returns null");
+    // waitForResponse should NOT have auth
+    const waitArgs = deps.waitForResponse.mock.calls[0].arguments[0];
+    assert.equal(waitArgs.auth, undefined, "waitForResponse should not have auth when resolveAuth returns null");
+    // Actions should NOT have headers
+    for (const action of sendArgs.actions) {
+      assert.equal(action.headers, undefined, "actions should not have headers when auth is null");
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -917,6 +1021,31 @@ describe("buildQuestionActions", () => {
     const actions = buildQuestionActions("https://ntfy.sh", "my-topic", "req-1", options);
 
     assert.equal(actions[0].url, "https://ntfy.sh/my-topic-response");
+  });
+
+  // ==================== Auth (Basic Auth headers) ====================
+
+  it("should include headers with Authorization on each action when auth is provided", async () => {
+    const buildAuthHeaderFn = await getBuildAuthHeader();
+    assert.ok(buildAuthHeaderFn, "buildAuthHeader must be exported from ntfy.mjs");
+    const auth = { username: "user", password: "pass" };
+    const options = [
+      { label: "Option A", description: "desc A" },
+      { label: "Option B", description: "desc B" },
+    ];
+    const actions = buildQuestionActions("https://ntfy.sh", "topic", "req-qa1", options, { auth });
+    const expectedHeaders = buildAuthHeaderFn(auth);
+    for (const action of actions) {
+      assert.deepEqual(action.headers, expectedHeaders);
+    }
+  });
+
+  it("should NOT include headers on actions when auth is not provided", () => {
+    const options = [{ label: "A", description: "a" }];
+    const actions = buildQuestionActions("https://ntfy.sh", "topic", "req-qa2", options);
+    for (const action of actions) {
+      assert.equal(action.headers, undefined, "actions should not have headers when auth is not provided");
+    }
   });
 });
 
@@ -1270,6 +1399,105 @@ describe("processAskUserQuestion", () => {
     } finally {
       errorSpy.mock.restore();
       _internal.delay = originalDelay;
+    }
+  });
+
+  // ==================== Auth threading (Basic Auth) ====================
+
+  it("should pass auth to sendNotification when resolveAuth returns credentials", async () => {
+    const auth = { username: "myuser", password: "mypass" };
+    const input = {
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [{
+          question: "Which?",
+          header: "Q",
+          options: [{ label: "A", description: "a" }, { label: "B", description: "b" }],
+          multiSelect: false,
+        }],
+      },
+    };
+    const deps = {
+      loadConfig: mock.fn(() => ({
+        topic: "test-topic",
+        ntfyServer: "https://ntfy.sh",
+        timeout: 120,
+      })),
+      sendNotification: mock.fn(async () => ({ ok: true })),
+      waitForResponse: mock.fn(async () => ({ answer: "A" })),
+      resolveAuth: mock.fn(() => auth),
+    };
+
+    await processAskUserQuestion(input, deps);
+
+    assert.equal(deps.sendNotification.mock.callCount(), 1);
+    const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
+    assert.deepEqual(callArgs.auth, auth, "sendNotification should receive auth in params");
+  });
+
+  it("should pass auth to waitForResponse when resolveAuth returns credentials", async () => {
+    const auth = { username: "myuser", password: "mypass" };
+    const input = {
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [{
+          question: "Which?",
+          header: "Q",
+          options: [{ label: "A", description: "a" }, { label: "B", description: "b" }],
+          multiSelect: false,
+        }],
+      },
+    };
+    const deps = {
+      loadConfig: mock.fn(() => ({
+        topic: "test-topic",
+        ntfyServer: "https://ntfy.sh",
+        timeout: 120,
+      })),
+      sendNotification: mock.fn(async () => ({ ok: true })),
+      waitForResponse: mock.fn(async () => ({ answer: "A" })),
+      resolveAuth: mock.fn(() => auth),
+    };
+
+    await processAskUserQuestion(input, deps);
+
+    assert.equal(deps.waitForResponse.mock.callCount(), 1);
+    const callArgs = deps.waitForResponse.mock.calls[0].arguments[0];
+    assert.deepEqual(callArgs.auth, auth, "waitForResponse should receive auth in params");
+  });
+
+  it("should pass auth to buildQuestionActions so actions have Authorization headers", async () => {
+    const auth = { username: "myuser", password: "mypass" };
+    const input = {
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [{
+          question: "Which?",
+          header: "Q",
+          options: [{ label: "A", description: "a" }, { label: "B", description: "b" }],
+          multiSelect: false,
+        }],
+      },
+    };
+    const deps = {
+      loadConfig: mock.fn(() => ({
+        topic: "test-topic",
+        ntfyServer: "https://ntfy.sh",
+        timeout: 120,
+      })),
+      sendNotification: mock.fn(async () => ({ ok: true })),
+      waitForResponse: mock.fn(async () => ({ answer: "A" })),
+      resolveAuth: mock.fn(() => auth),
+    };
+
+    await processAskUserQuestion(input, deps);
+
+    const callArgs = deps.sendNotification.mock.calls[0].arguments[0];
+    const buildAuthHeaderFn = await getBuildAuthHeader();
+    assert.ok(buildAuthHeaderFn, "buildAuthHeader must be exported from ntfy.mjs");
+    const expectedHeaders = buildAuthHeaderFn(auth);
+    for (const action of callArgs.actions) {
+      assert.deepEqual(action.headers, expectedHeaders, "each question action should have Authorization headers");
     }
   });
 });

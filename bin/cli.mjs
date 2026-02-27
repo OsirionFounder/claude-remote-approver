@@ -62,6 +62,7 @@ export async function main(args, deps) {
         deps.stderr.write("Error: No topic configured. Run 'claude-remote-approver setup' first.\n");
         break;
       }
+      const auth = deps.resolveAuth(config);
       try {
         await deps.sendNotification({
           server: config.ntfyServer,
@@ -70,6 +71,7 @@ export async function main(args, deps) {
           message: "Test notification - if you see this, setup is working!",
           actions: [],
           requestId: "test",
+          auth,
         });
         deps.stdout.write("Test notification sent successfully.\n");
       } catch (err) {
@@ -83,6 +85,12 @@ export async function main(args, deps) {
       deps.stdout.write(`Topic:   ${config.topic}\n`);
       deps.stdout.write(`Server:  ${config.ntfyServer}\n`);
       deps.stdout.write(`Timeout: ${config.timeout}s\n`);
+      const auth = deps.resolveAuth(config);
+      if (auth) {
+        deps.stdout.write(`Auth:    configured (username: ${auth.username})\n`);
+      } else {
+        deps.stdout.write(`Auth:    not configured\n`);
+      }
       break;
     }
 
@@ -184,7 +192,7 @@ const isMain =
 if (isMain) {
   const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
 
-  const { loadConfig, saveConfig, generateTopic } = await import(
+  const { loadConfig, saveConfig, generateTopic, resolveAuth } = await import(
     "../src/config.mjs"
   );
   const { sendNotification, waitForResponse, formatToolInfo } = await import(
@@ -208,6 +216,7 @@ if (isMain) {
     loadConfig,
     saveConfig,
     generateTopic,
+    resolveAuth,
     sendNotification,
     waitForResponse,
     formatToolInfo,
@@ -225,6 +234,11 @@ if (isMain) {
     stderr: process.stderr,
     stdin: stdinData,
     exit: process.exit,
+    prompt: async (question) => {
+      const { createInterface } = await import("node:readline");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      return new Promise((resolve) => rl.question(question, (answer) => { rl.close(); resolve(answer); }));
+    },
   };
 
   await main(args, deps);

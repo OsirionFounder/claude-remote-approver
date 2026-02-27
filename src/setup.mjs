@@ -105,11 +105,21 @@ export async function runSetup({
   generateTopic,
   saveConfig,
   loadConfig,
+  prompt,
 }) {
   const topic = generateTopic();
 
   const config = loadConfig(configPath);
   config.topic = topic;
+
+  if (prompt) {
+    const useAuth = await prompt("Use authenticated topics? (y/n): ");
+    if (useAuth?.toLowerCase() === "y") {
+      config.ntfyUsername = await prompt("Username: ");
+      config.ntfyPassword = await prompt("Password: ");
+    }
+  }
+
   saveConfig(config, configPath);
 
   const hookCommand = getHookCommand();

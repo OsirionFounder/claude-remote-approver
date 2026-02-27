@@ -145,6 +145,61 @@ describe("runSetup", () => {
 
     assert.equal(result.ntfyServer, "https://ntfy.example.com");
   });
+
+  // =========================================================================
+  // Auth prompt during setup (TDD Red phase — runSetup doesn't accept prompt yet)
+  // =========================================================================
+
+  it("should prompt for auth and save credentials when user answers 'y'", async () => {
+    let savedConfig = null;
+    const promptResponses = ["y", "myuser", "mypass"];
+    let promptIdx = 0;
+
+    const result = await runSetup({
+      configPath: tmpConfigPath,
+      settingsPath: tmpSettingsPath,
+      generateTopic: () => "cra-authtest1",
+      saveConfig: (config, path) => { savedConfig = config; },
+      loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, ntfyUsername: "", ntfyPassword: "", autoApprove: [], autoDeny: [] }),
+      prompt: async (question) => promptResponses[promptIdx++],
+    });
+
+    assert.equal(savedConfig.ntfyUsername, "myuser");
+    assert.equal(savedConfig.ntfyPassword, "mypass");
+  });
+
+  it("should skip auth when user answers 'n'", async () => {
+    let savedConfig = null;
+
+    const result = await runSetup({
+      configPath: tmpConfigPath,
+      settingsPath: tmpSettingsPath,
+      generateTopic: () => "cra-authtest2",
+      saveConfig: (config, path) => { savedConfig = config; },
+      loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, ntfyUsername: "", ntfyPassword: "", autoApprove: [], autoDeny: [] }),
+      prompt: async () => "n",
+    });
+
+    // ntfyUsername/ntfyPassword should remain unchanged (empty)
+    assert.equal(savedConfig.ntfyUsername, "");
+    assert.equal(savedConfig.ntfyPassword, "");
+  });
+
+  it("should skip auth when user presses Enter (empty response)", async () => {
+    let savedConfig = null;
+
+    const result = await runSetup({
+      configPath: tmpConfigPath,
+      settingsPath: tmpSettingsPath,
+      generateTopic: () => "cra-authtest3",
+      saveConfig: (config, path) => { savedConfig = config; },
+      loadConfig: () => ({ topic: "", ntfyServer: "https://ntfy.sh", timeout: 120, ntfyUsername: "", ntfyPassword: "", autoApprove: [], autoDeny: [] }),
+      prompt: async () => "",
+    });
+
+    assert.equal(savedConfig.ntfyUsername, "");
+    assert.equal(savedConfig.ntfyPassword, "");
+  });
 });
 
 // ===========================================================================
