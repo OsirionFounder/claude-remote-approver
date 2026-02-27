@@ -215,14 +215,14 @@ Then subscribe to the topic on your self-hosted server in the ntfy app.
 
 ### Using authenticated topics
 
-If your ntfy server requires authentication, you can configure Basic Auth credentials.
+If you are running a self-hosted ntfy server that requires authentication, you can configure Basic Auth credentials. If you are using the public ntfy.sh server, you do not need this — select "n" when prompted during setup.
 
 **Option 1: Interactive setup**
 
 ```bash
 claude-remote-approver setup
 # ... after topic generation, you will be asked:
-# Use authenticated topics? (y/n): y
+# Use authenticated topics? (only for self-hosted ntfy servers) (y/n): y
 # Username: myuser
 # Password: mypassword
 ```

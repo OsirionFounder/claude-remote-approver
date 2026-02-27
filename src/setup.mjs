@@ -114,7 +114,7 @@ export async function runSetup({
   config.topic = topic;
 
   if (prompt) {
-    const useAuth = await prompt("Use authenticated topics? (y/n): ");
+    const useAuth = await prompt("Use authenticated topics? (only for self-hosted ntfy servers) (y/n): ");
     if (useAuth?.toLowerCase() === "y") {
       config.ntfyUsername = await prompt("Username: ");
       const promptSecretFn = promptSecret || prompt;
