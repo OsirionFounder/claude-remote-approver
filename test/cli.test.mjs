@@ -199,7 +199,7 @@ describe("main", () => {
       );
     });
 
-    it("should use http:// URL in QR code when ntfyServer is HTTP", async () => {
+    it("should use ntfy:// URL with secure=false in QR code when ntfyServer is HTTP", async () => {
       const stdout = createMockWriter();
       const deps = createDeps({
         stdout,
@@ -214,7 +214,7 @@ describe("main", () => {
 
       assert.equal(deps.generateQR.mock.callCount(), 1);
       const [text] = deps.generateQR.mock.calls[0].arguments;
-      assert.equal(text, "http://192.168.1.100:8080/cra-selfhost123", `QR text should use http:// for HTTP server, got: ${text}`);
+      assert.equal(text, "ntfy://192.168.1.100:8080/cra-selfhost123?secure=false", `QR text should use ntfy:// with secure=false for HTTP server, got: ${text}`);
 
       const output = stdout.output();
       assert.ok(

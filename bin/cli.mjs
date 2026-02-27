@@ -40,7 +40,7 @@ export async function main(args, deps) {
         const isHttps = serverUrl.protocol === "https:";
         const ntfyUrl = isHttps
           ? `ntfy://${serverUrl.host}/${result.topic}`
-          : `${result.ntfyServer.replace(/\/+$/, "")}/${result.topic}`;
+          : `ntfy://${serverUrl.host}/${result.topic}?secure=false`;
         const subscribeUrl = `${result.ntfyServer.replace(/\/+$/, "")}/${result.topic}`;
 
         deps.stdout.write("Scan this QR code in the ntfy app to subscribe:\n\n");
