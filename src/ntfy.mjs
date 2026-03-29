@@ -459,14 +459,19 @@ export function formatToolInfo({ hook_event_name, tool_name, tool_input }) {
   } else {
     title = `Claude Code: ${tool_name}`;
     switch (tool_name) {
-      case 'Bash':
-        message = tool_input?.command ?? JSON.stringify(tool_input);
+      case 'Bash': {
+        const desc = tool_input?.description ? (tool_input.description + String.fromCharCode(10)) : '';
+        message = desc + (tool_input?.command ?? JSON.stringify(tool_input));
         break;
+      }
       case 'Read':
       case 'Write':
-      case 'Edit':
-        message = tool_input?.file_path ?? JSON.stringify(tool_input);
+      case 'Edit': {
+        const fp = tool_input?.file_path ?? '';
+        const snippet = tool_input?.old_string ? (String.fromCharCode(10) + 'Replacing: ' + tool_input.old_string.slice(0, 100)) : '';
+        message = fp + snippet;
         break;
+      }
       default:
         message = JSON.stringify(tool_input);
         break;
