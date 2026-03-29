@@ -266,5 +266,6 @@ export async function processHook(input, { loadConfig, sendNotification, waitFor
   if (response.alwaysAllow === true && input.permission_suggestions?.length > 0) {
     decision.updatedPermissions = input.permission_suggestions;
   }
+  sendNotification({ server: config.ntfyServer, topic: config.topic, title: "Approved", message: title, actions: [], requestId: requestId + "-ack", ...(auth && { auth }) }).catch(() => {});
   return { hookSpecificOutput: { hookEventName: "PermissionRequest", decision } };
 }
